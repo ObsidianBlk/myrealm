@@ -1,5 +1,5 @@
 
-module.exports = function(cluster){
+module.exports = function(cluster, config){
   if (cluster.isWorker !== true){
     throw new Error("Expected to be spawned as a Cluster Worker.");
   }
@@ -10,33 +10,33 @@ module.exports = function(cluster){
   
   var app = require('express')();
   var server = require('http').createServer(app);
-  var io = require('socket.io').listen(server);
-  var redis = require('socket.io-redis');
-  io.adapter(redis({host:'localhost', port:6379}));
+  var socketServer = new (require('uws').Server)({server:server});
 
   // Configuring server paths
   app.get('/', function(req, res){
-    res.sendfile(path.resolve('client/index.html'));
+    res.sendFile(path.resolve('client/index.html'));
   });
 
   // serves all the static files
   app.get(/^(.+)$/, function(req, res){ 
     console.log('static file request : ' + req.params);
-    res.sendfile(path.resolve('client/' + req.params[0])); 
+    res.sendFile(path.resolve('client/' + req.params[0])); 
+  });
+
+  socketServer.on('connection', function(client){
+    console.log("Client connection made on Worker " + cluster.worker.id + ".");
+
+    client.on("message", function(msg){
+      console.log(msg);
+    });
+
+    client.on("close", function(){
+      console.log("Client connection closed on Worker " + cluster.worker.id + ".");
+    });
   });
 
   // Start the HTTP server
-  console.log("Starting the server");
-  server.listen(3000);
+  console.log("Worker " + cluster.worker.id + " starting server on port " + config.http.port);
+  server.listen(config.http.port);
 
-
-  // Configuring Socket.io sockets...
-  io.sockets.on('connection', function(socket){
-    socket.id = shortid.generate();
-    console.log("Socket " + socket.id + " connected to Worker " + cluster.worker.id + ".");
-    
-    socket.on("disconnect", function(){
-      console.log("Socket " + socket.id + " disconnected from Worker " + cluster.worker.id + ".");
-    });
-  });
 };

@@ -1,13 +1,103 @@
 
+// -------------------------------------------------------------------------------------------
+// Server.config.json Schema
+// -------------------------------------------------------------------------------------------
+var CONFIG_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "processes": {
+      "type": "integer"
+    },
+    "redis": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host",
+        "port"
+      ]
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "port"
+      ]
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "processes",
+    "redis",
+    "http"
+  ]
+};
+
+var path = require('path');
+var tv4 = require('tv4');
+
+// -------------------------------------------------------------------------------------------
+// Loading in the Config file (if it exists)...
+// -------------------------------------------------------------------------------------------
+try {
+  var config = require(path.resolve('server.config.json'));
+} catch (e) {
+  console.warning("Failed to load Server.config.json.\n\"" + e.message + "\".\nUsing default configuration.");
+  config = null;
+}
+
+if (config !== null && tv4.validate(config, CONFIG_SCHEMA) === false){
+  console.warning("Server.config.json is invalid.\nUsing default configuration.");
+  config = null;
+}
+
+if (config === null){
+  config = {
+    version:"1.0.0",
+    processes:0,
+    redis:{
+      host:"localhost",
+      port:6379
+    },
+    http:{
+      port:3000
+    }
+  };
+}
+
+
 var cluster = require('cluster');
 
 if (cluster.isMaster){
-  var numForks = require('os').cpus().length;
-  var server = require('http').createServer();
-  var io = require('socket.io').listen(server);
-  var redis = require('socket.io-redis');
-  io.adapter(redis({host:'localhost', port:6379}));
+  var numCPUs = require('os').cpus().length;
+  //var server = require('http').createServer();
+  //var socketServer = require('uws').Server;
 
+  if (config.processes <= 0){
+    config.processes = numCPUs;
+  } else if (config.processes > numCPUs){
+    console.warning("Number of requested processes exceed number of CPUs on system.");
+  }
 
   cluster.on("fork", function(worker){
     console.log("Worker " + worker.id + " forked.");
@@ -29,12 +119,12 @@ if (cluster.isMaster){
     console.log("Worker " + worker.id + " exited with Signal/Code " + signal + "/" + code);
   });
 
-  for (var i=0; i < numForks; i++){
+  for (var i=0; i < config.processes; i++){
     cluster.fork();
   }
   
 } else if(cluster.isWorker){
-  require('./worker')(cluster);
+  require('./worker')(cluster, config);
 }
 
 /*
