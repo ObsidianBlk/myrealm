@@ -3,11 +3,31 @@ module.exports = function(cluster, config){
   if (cluster.isWorker !== true){
     throw new Error("Expected to be spawned as a Cluster Worker.");
   }
+
+  
   console.log("Started Worker " + cluster.worker.id);
 
+  // -------------------------------------------
+  // -- Getting basic modules
   var path = require('path');
   var shortid = require('shortid');
-  
+
+  // -------------------------------------------
+  // -- Getting REDIS client connection
+  var Redis = require('ioredis');
+
+  var sub = new Redis({
+    host: config.redis.host,
+    port: config.redis.port
+  });
+
+  var pub = new Redis({
+    host: config.redis.host,
+    port: config.redis.port
+  });
+
+  // -------------------------------------------
+  // -- Getting HTTP and Socket servers
   var app = require('express')();
   var server = require('http').createServer(app);
   var socketServer = new (require('uws').Server)({server:server});
