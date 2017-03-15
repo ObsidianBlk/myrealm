@@ -4,27 +4,26 @@ module.exports = function(cluster, config){
     throw new Error("Expected to be spawned as a Cluster Worker.");
   }
 
+  // -------------------------------------------
+  // -- Setting up logging
+  var Logger = require('./logger')(config.logging);
+  var logWorker = new Logger("homegrid:worker");
+  var logHTTP = new Logger("homegrid:http");
+  var logSocket = new Logger("homegrid:sockets");
+  var logRedis = new Logger("homegrid:redis");
   
-  console.log("Started Worker " + cluster.worker.id);
+
+  logWorker.info("Started Worker %d", cluster.worker.id);
 
   // -------------------------------------------
   // -- Getting basic modules
   var path = require('path');
   var shortid = require('shortid');
+  var moment = require('moment');
 
   // -------------------------------------------
-  // -- Getting REDIS client connection
-  var Redis = require('ioredis');
-
-  var sub = new Redis({
-    host: config.redis.host,
-    port: config.redis.port
-  });
-
-  var pub = new Redis({
-    host: config.redis.host,
-    port: config.redis.port
-  });
+  // -- Setting up Redis Pub/Sub connections...
+  var r = require('./redisPubSub')(cluster.worker.id, logRedis, config.redis);
 
   // -------------------------------------------
   // -- Getting HTTP and Socket servers
@@ -38,25 +37,27 @@ module.exports = function(cluster, config){
   });
 
   // serves all the static files
-  app.get(/^(.+)$/, function(req, res){ 
-    console.log('static file request : ' + req.params);
+  app.get(/^(.+)$/, function(req, res){
+    logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
+    //console.log('static file request : ' + req.params);
     res.sendFile(path.resolve('client/' + req.params[0])); 
   });
 
   socketServer.on('connection', function(client){
-    console.log("Client connection made on Worker " + cluster.worker.id + ".");
+    logSocket.info("[WORKER %d] Client connected.", cluster.worker.id);
 
     client.on("message", function(msg){
-      console.log(msg);
+      logSocket.debug("[WORKER %d] %s", cluster.worker.id, msg);
     });
 
     client.on("close", function(){
-      console.log("Client connection closed on Worker " + cluster.worker.id + ".");
+      logSocket.info("[WORKER %d] Client connection closed.", cluster.worker.id);
     });
   });
 
   // Start the HTTP server
-  console.log("Worker " + cluster.worker.id + " starting server on port " + config.http.port);
+  logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.http.port);
+  //console.log("Worker " + cluster.worker.id + " starting server on port " + config.http.port);
   server.listen(config.http.port);
 
 };
