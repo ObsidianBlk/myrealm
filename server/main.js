@@ -12,6 +12,10 @@ var CONFIG_SCHEMA = {
     "processes": {
       "type": "integer"
     },
+    "secret": {
+      "type": "string",
+      "minLength": 4
+    },
     "redis": {
       "type": "object",
       "properties": {
@@ -35,10 +39,15 @@ var CONFIG_SCHEMA = {
       "properties": {
         "port": {
           "type": "integer"
-        }
+        },
+	"path":{
+	  "type": "string",
+	  "minLength": 1
+	}
       },
       "required": [
-        "port"
+        "port",
+	"path"
       ]
     },
     "logging": {
@@ -61,6 +70,7 @@ var CONFIG_SCHEMA = {
   },
   "required": [
     "version",
+    "secret",
     "redis",
     "http"
   ]

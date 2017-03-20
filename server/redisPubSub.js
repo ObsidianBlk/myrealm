@@ -2,8 +2,10 @@
 /*
   A simple module to compartmentalize redis pub/sub connections. 
 */
-module.exports = function(workerid, log, config){
+module.exports = function(workerid, config){
   var moment = require('moment');
+  var Logger = require('./logger')(config.logging);
+  var log = new Logger("homegrid:redis");
   
   var r = {};
   var SUB_Ready = false;
@@ -45,8 +47,8 @@ module.exports = function(workerid, log, config){
      Creating and Configuring SUBCRIBE connection
      --------------------------------------------------------------------------------------- */
   r.sub = new r.Redis({
-    host: config.host,
-    port: config.port
+    host: config.redis.host,
+    port: config.redis.port
   });
 
   r.sub.on("ready", function(){
@@ -86,8 +88,8 @@ module.exports = function(workerid, log, config){
      Creating and Configuring PUBLISH connection
      --------------------------------------------------------------------------------------- */
   r.pub = new r.Redis({
-    host: config.host,
-    port: config.port
+    host: config.redis.host,
+    port: config.redis.port
   });
 
   r.pub.on("ready", function(){

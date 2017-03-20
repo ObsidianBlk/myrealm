@@ -10,7 +10,6 @@ module.exports = function(cluster, config){
   var logWorker = new Logger("homegrid:worker");
   var logHTTP = new Logger("homegrid:http");
   var logSocket = new Logger("homegrid:sockets");
-  var logRedis = new Logger("homegrid:redis");
   
 
   logWorker.info("Started Worker %d", cluster.worker.id);
@@ -18,12 +17,11 @@ module.exports = function(cluster, config){
   // -------------------------------------------
   // -- Getting basic modules
   var path = require('path');
-  var shortid = require('shortid');
   var moment = require('moment');
 
   // -------------------------------------------
   // -- Setting up Redis Pub/Sub connections...
-  var r = require('./redisPubSub')(cluster.worker.id, logRedis, config.redis);
+  var r = require('./redisPubSub')(cluster.worker.id, config);
 
   // -------------------------------------------
   // -- Getting HTTP and Socket servers
@@ -33,14 +31,14 @@ module.exports = function(cluster, config){
 
   // Configuring server paths
   app.get('/', function(req, res){
-    res.sendFile(path.resolve('client/index.html'));
+    res.sendFile(path.resolve(config.http.path + 'index.html'));
   });
 
   // serves all the static files
   app.get(/^(.+)$/, function(req, res){
     logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
     //console.log('static file request : ' + req.params);
-    res.sendFile(path.resolve('client/' + req.params[0])); 
+    res.sendFile(path.resolve(config.http.path + req.params[0])); 
   });
 
   socketServer.on('connection', function(client){
