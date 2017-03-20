@@ -3,8 +3,8 @@
 
 
 module.exports = function(workerid, config, r){
-  var promise = require('bluebird');
   var shortid = require('shortid');
+  var Middleware = require('./middleware');
   var Logger = require('./logger')(config.logging);
   var logSocket = new Logger("homegrid:sockets");
   var logGrid = new Logger("homegrid:grid");
@@ -37,11 +37,20 @@ module.exports = function(workerid, config, r){
     if ("request" in data){
       var rname = data["request"];
       if (rname in MESSAGE){
-	var mwl = MESSAGE[rname].middleware;
+        var ctx = {
+          id: id,
+          client: client,
+          request: data,
+          response: {}
+        };
+	var func = MESSAGE[rname].middleware.exec(ctx);
 	var cb = MESSAGE[rname].callback;
-	var response = {};
-
-	// TODO: Use a bluebird promise and a generator to loop through the middleware functions.
+        func.then(function(){
+          cb(ctx, null);
+        }).catch(function(e){
+          cb(null, e);
+        });
+        
       }
     }
   }
@@ -75,11 +84,12 @@ module.exports = function(workerid, config, r){
 
       var mw = null;
       if (args.length > 2){
-	mw = args.slice(1, args.length-1);
-	for (var i=0; i < mw.length; i++){
-	  if (typeof(mw[i]) !== 'function'){
+	mw = new Middleware(); //args.slice(1, args.length-1);
+	for (var i=1; i < args.length-1; i++){
+	  if (typeof(args[i]) !== 'function'){
 	    throw new TypeError("Expected middleware function.");
 	  }
+          mw.use(args[i]);
 	}
       }
 
@@ -89,7 +99,7 @@ module.exports = function(workerid, config, r){
       };
     },
     
-    addClient:function(client){
+    connection:function(client){
       var id = null;
       try {
 	id = NewID(10);
