@@ -12,6 +12,10 @@ var CONFIG_SCHEMA = {
     "processes": {
       "type": "integer"
     },
+    "serverkey": {
+      "type": "string",
+      "minLength": 4
+    },
     "secret": {
       "type": "string",
       "minLength": 4
@@ -70,6 +74,7 @@ var CONFIG_SCHEMA = {
   },
   "required": [
     "version",
+    "serverkey",
     "secret",
     "redis",
     "http"

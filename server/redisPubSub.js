@@ -40,6 +40,11 @@ module.exports = function(workerid, config){
     }
   });
 
+  // Helper function for redis key generation.
+  r.Key = function(){
+    return Array.prototype.slice.call(arguments).join(':');
+  };
+
   
   r.Redis = require('ioredis');
 

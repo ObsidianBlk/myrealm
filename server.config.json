@@ -1,6 +1,7 @@
 {
   "version":"1.0.0",
   "processes":0,
+  "serverkey":"HOMEGRID_SERVER",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
   "redis":{
     "host":"localhost",
