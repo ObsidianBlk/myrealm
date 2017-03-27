@@ -5,7 +5,8 @@
 module.exports = function(workerid, config, r){
   var shortid = require('shortid');
   var Promise = require('bluebird');
-  var Middleware = require('./middleware');
+  var Middleware = require('../common/middleware');
+  var CreateContext = require('./context');
   var Logger = require('./logger')(config.logging);
   var logSocket = new Logger("homegrid:sockets");
   var logDispatch = new Logger("homegrid:dispatch");
@@ -17,7 +18,8 @@ module.exports = function(workerid, config, r){
   function GenerateVisitorID(attempts){
     return new Promise(function(resolve, reject){
       var id = shortid();
-      r.pub.hget(r.Key(config.serverkey, "visitor", id), function(err, obj){
+      var key = r.Key(config.serverkey, "visitor", id);
+      r.pub.hgetall(key, function(err, obj){
 	if (err){
 	  logDispatch.error("[WORKER %d] %s", workerid, err);
 	  reject(err);
@@ -29,7 +31,15 @@ module.exports = function(workerid, config, r){
 	      reject(new Error("Failed to obtain a unique visitor ID."));
 	    }
 	  } else {
-	    resolve(id);
+	    r.pub.hmset(key, {
+	      username: "USER_" + id,
+	      validated: false
+	    }, function(err){
+	      if (err){
+		reject(new Error("Failed to generate hash for new visitor ID '" + id + "'. \"" + err + "\"."));
+	      }
+	      resolve(id);
+	    });
 	  }
 	}
       });
@@ -40,27 +50,63 @@ module.exports = function(workerid, config, r){
     logDispatch.error("[WORKER %d] %s", workerid, e.message);
     if (typeof(client) !== 'undefined'){
       client.send(JSON.stringify({
+	status: "F",
 	error: e.message
       }));
     }
   }
 
-  function ProcessClientMessage(id, client, msg){
-    var data = JSON.parse(msg);
-    if ("request" in data){
-      var rname = data["request"];
+  function ProcessClientBuffers(id){
+    var timeout = 1000*(1/60); // TODO: Make this a config variable.
+    var co = CLIENT[id];
+    var buff = null;
+
+    switch(co.buffer.length){
+    case 0: // Nothing to send...
+      break;
+    case 1: // Send the 0th entry directly.
+      buff = co.buffer;
+      co.buffer = [];
+      logDispatch.debug("[WORKER %d] Sending command to client '%s'.", workerid, co.id);
+      co.client.send(JSON.stringify(buff[0]));
+      break;
+    default: // Send all msgs in a special command.
+      buff = co.buffer;
+      co.buffer = [];
+      logDispatch.debug("[WORKER %d] Sending buffered commands to client '%s'.", workerid, co.id);
+      co.client.send(JSON.stringify({
+	cmds:buff
+      }));
+    }
+
+    // Wait for the next timeout to process.
+    co.processID = setTimeout(function(){
+      ProcessClientBuffers(id);
+    }, timeout);
+  }
+
+  function ProcessClientMessage(co, msg){
+    logDispatch.debug("[WORKER %d] Processing message for '%s'.", workerid, co.id);
+    if (typeof(msg) === 'string'){
+      try {
+	msg = JSON.parse(msg);
+      } catch (e) {
+	logDispatch.warning("[WORKER %d] Client request not a valid JSON object.", workerid);
+	return;
+      }
+    }
+    
+    if ("req" in msg){
+      var rname = msg["req"];
       if (rname in MESSAGE){
-        var ctx = {
-          id: id,
-          client: client,
-          request: data,
-          response: {}
-        };
+	var ctx = CreateContext(co.id, co.client, msg, Dispatch);
 
 	var cb = MESSAGE[rname].callback;
 	if (MESSAGE[rname].middleware instanceof Middleware){
+	  logDispatch.debug("[WORKER %d] Request '%s' has middleware...", workerid, rname);
 	  var func = MESSAGE[rname].middleware.exec(ctx);
           func.then(function(){
+	    logDispatch.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, co.id);
             cb(ctx, null);
           }).catch(function(e){
             cb(null, e);
@@ -74,12 +120,21 @@ module.exports = function(workerid, config, r){
 
   function DropClient(id){
     // TODO: Drop any redis data.
-    delete CLIENT[id];
-    logDispatch.info("[WORKER %d] <Client '%s'> Removed from grid.", workerid, id);
+    r.pub.del(r.Key(config.serverkey, "visitor", id), function(err, reply){
+      if (err){
+	logDispatch.error("[WORKER %d] %o", workerid, err);
+      }
+      if (reply !== 1){
+	logDispatch.error("[WORKER %d] Failed to remove ID '%s' from cache server.", workerid, id);
+      }
+      clearTimeout(CLIENT[id].processID);
+      delete CLIENT[id];
+      logDispatch.info("[WORKER %d] <Client '%s'> Removed from grid.", workerid, id);
+    });
   }
   
   
-  return {
+  var Dispatch = {
     // @param name Message name that triggers this handler.
     // @param [middleware, ...] Zero or more middleware used to process the message.
     // @param callback Function called to finalize the message.
@@ -173,32 +228,83 @@ module.exports = function(workerid, config, r){
     },
     
     connection:function(client){
-      GenerateVisitorID(10).then(function(id){
-	client.on("message", function(msg){
-	  logSocket.debug("[WORKER %d] <Client %s> %s", workerid, id, msg);
+      function BuildClientObj(c, id){
+	return {
+	  id: id,
+	  client: c,
+	  buffer: [],
+	  processID: setTimeout(function(){
+	    ProcessClientBuffers(id);
+	  }, 1000*(1/60))
+	};
+      }
+
+      function DefineClientEvents(co){
+	co.client.on("message", function(msg){
+	  logSocket.debug("[WORKER %d] <Client %s> %s", workerid, co.id, msg);
 	  try {
-	    ProcessClientMessage(id, client, msg);
+	    ProcessClientMessage(co, msg);
 	  } catch (e) {
-	    ProcessException(e, client);
+	    ProcessException(e, co.client);
 	  }
 	});
 
-	client.on("close", function(){
-	  logSocket.info("[WORKER %d] <Client '%s'> Connection closed.", workerid, id);
+	co.client.on("close", function(){
+	  logSocket.info("[WORKER %d] <Client '%s'> Connection closed.", workerid, co.id);
 	  try {
-	    DropClient(id);
+	    DropClient(co.id);
 	  } catch (e) {
 	    ProcessException(e);
 	  }
 	});
-
-	CLIENT[id] = client;
-	logDispatch.info("[WORKER %d] New Client added with ID '%s'.", workerid, id);
-	client.send("Hello there"); // TODO: You know... something FAR more appropriate!
+	CLIENT[co.id] = co;
+	logDispatch.info("[WORKER %d] New Client added with ID '%s'.", workerid, co.id);
+      }
+      
+      GenerateVisitorID(10).then(function(id){
+	DefineClientEvents(BuildClientObj(client, id));
+	// Faking a request to kick the pig.
+	ProcessClientMessage(CLIENT[id], {
+	  req: "connection"
+	}, true);
       }).catch(function(e){
 	logDispatch.error("[WORKER %d] %s", workerid, e.message);
       });
       return this;
+    },
+
+    send:function(id, msg, immediate){
+      immediate = (immediate === true);
+      if (id in CLIENT){
+	var co = CLIENT[id];
+	if (immediate === true){
+	  logDispatch.debug("[WORKER %d] Sending message to client '%s'.", workerid, co.id);
+	  co.client.send(JSON.stringify(msg));
+	} else {
+	  logDispatch.debug("[WORKER %d] Buffering message to client '%s'.", workerid, co.id);
+	  co.buffer.push(msg);
+	}
+      } else {
+	logDispatch.error("[WORKER %d] No client with ID '%s'.", workerid, id);
+      }
+    },
+
+    broadcast: function(msg, fromid){
+      // TODO: Flesh this out!
     }
   };
+
+
+  Dispatch.handler("connection", function(ctx, err){
+    if (!err){
+      ctx.response.cmd = "connrecognize";
+      ctx.response.data = {
+	id:ctx.id
+      };
+      ctx.send();
+    }
+  });
+
+
+  return Dispatch;
 };

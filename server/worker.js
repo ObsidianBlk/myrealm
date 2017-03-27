@@ -9,7 +9,6 @@ module.exports = function(cluster, config){
   var Logger = require('./logger')(config.logging);
   var logWorker = new Logger("homegrid:worker");
   var logHTTP = new Logger("homegrid:http");
-  var logSocket = new Logger("homegrid:sockets");
   
 
   logWorker.info("Started Worker %d", cluster.worker.id);
@@ -28,6 +27,7 @@ module.exports = function(cluster, config){
   var app = require('express')();
   var server = require('http').createServer(app);
   var socketServer = new (require('uws').Server)({server:server});
+  var Dispatch = require('./dispatch')(cluster.worker.id, config, r);
 
   // Configuring server paths
   app.get('/', function(req, res){
@@ -42,6 +42,7 @@ module.exports = function(cluster, config){
   });
 
   socketServer.on('connection', function(client){
+    /*
     logSocket.info("[WORKER %d] Client connected.", cluster.worker.id);
 
     client.on("message", function(msg){
@@ -51,6 +52,8 @@ module.exports = function(cluster, config){
     client.on("close", function(){
       logSocket.info("[WORKER %d] Client connection closed.", cluster.worker.id);
     });
+    */
+    Dispatch.connection(client);
   });
 
   // Start the HTTP server
