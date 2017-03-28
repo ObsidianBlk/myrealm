@@ -5,7 +5,7 @@
 module.exports = function(workerid, config){
   var moment = require('moment');
   var Logger = require('./logger')(config.logging);
-  var log = new Logger("homegrid:redis");
+  var log = new Logger(config.logDomain + ":redis");
   
   var r = {};
   var SUB_Ready = false;
@@ -42,7 +42,7 @@ module.exports = function(workerid, config){
 
   // Helper function for redis key generation.
   r.Key = function(){
-    return Array.prototype.slice.call(arguments).join(':');
+    return config.redis.serverkey + ":" + Array.prototype.slice.call(arguments).join(':');
   };
 
   

@@ -12,9 +12,9 @@ var CONFIG_SCHEMA = {
     "processes": {
       "type": "integer"
     },
-    "serverkey": {
+    "logDomain":{
       "type": "string",
-      "minLength": 4
+      "minLength": 1
     },
     "secret": {
       "type": "string",
@@ -31,6 +31,9 @@ var CONFIG_SCHEMA = {
         },
 	"connectionTimeout":{
 	  "type": "integer"
+	},
+	"serverkey":{
+	  "type": "string"
 	}
       },
       "required": [
@@ -74,7 +77,6 @@ var CONFIG_SCHEMA = {
   },
   "required": [
     "version",
-    "serverkey",
     "secret",
     "redis",
     "http"
@@ -117,8 +119,16 @@ if (config === null){
   };
 }
 
+if (typeof(config.logDomain) !== 'string'){
+  config.logDomain = "MYREALM";
+}
+
 if (typeof(config.redis.connectionTimeout) !== 'number'){
   config.redis.connectionTimeout = 5;
+}
+
+if (typeof(config.redis.serverkey) !== 'string'){
+  config.redis.serverkey = "";
 }
 
 
@@ -126,7 +136,7 @@ var cluster = require('cluster');
 
 if (cluster.isMaster){
   var Logger = require('./logger')(config.logging);
-  var log = new Logger("homegrid:master");
+  var log = new Logger(config.logDomain + ":master");
   var numCPUs = require('os').cpus().length;
 
   if (config.processes <= 0){

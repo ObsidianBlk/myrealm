@@ -8,21 +8,34 @@ The created context object contains a send function which will send any data wit
 the response property to the client given to define the context object using the
 clients (assumed to be) built in send() method.
 
-@param id Current ID of the client which sent the request.
-@param client The WebSocket client object that sent the request.
+@param co An Object that should contain an .id and .client property at minimum. Depending on property data, new context methods may become available.
 @param request Object containing the data of the original request.
 @param broadcastFunc [OPTIONAL] A function that will broadcast any generated response to all currently connected clients.
 ----------------------------------------------------------------------- */
-module.exports = function(id, client, request, dispatch){
+module.exports = function(co, request, dispatch){
   var ctx = {
     response: {},
-    broadcast: function(){
-      dispatch.broadcast(ctx.response, id);
-    },
-    send: function(){
-      dispatch.send(id, ctx.response);
+    error: function(message){
+      ctx.response.status = "error";
+      ctx.response.message = message;
     }
   };
+
+  if (co.id !== null){
+    ctx.broadcast = function(){
+      dispatch.broadcast(ctx.response, co.id);
+    };
+
+    ctx.send = function(){
+      dispatch.send(co.id, ctx.response);
+    };
+  } else {
+    ctx.send = function(){
+      co.client.send(JSON.stringify(ctx.response));
+    };
+
+    ctx.broadcast = function(){};
+  }
 
   Object.defineProperties(ctx, {
     "request":{
@@ -34,9 +47,15 @@ module.exports = function(id, client, request, dispatch){
       enumerable: true,
       writable: false,
       configurable: false,
-      value: id
+      value: (co.id !== null) ? co.id : "UNVALIDATED"
     }
   });
+
+  if (co.id === null){
+    Object.defineProperty(ctx, "co", {
+      get:function(){return co;}
+    });
+  }
 
   return ctx;
 };

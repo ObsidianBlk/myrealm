@@ -3,22 +3,24 @@
 
 
 module.exports = function(workerid, config, r){
-  var shortid = require('shortid');
-  var Promise = require('bluebird');
+  //var shortid = require('shortid');
+  //var Promise = require('bluebird');
   var Middleware = require('../common/middleware');
   var CreateContext = require('./context');
   var Logger = require('./logger')(config.logging);
-  var logSocket = new Logger("homegrid:sockets");
-  var logDispatch = new Logger("homegrid:dispatch");
+  var logSocket = new Logger(config.logDomain + ":sockets");
+  var logDispatch = new Logger(config.logDomain + ":dispatch");
+
+  //var jwt = require('jsonwebtoken');
 
   var CLIENT = {};
   var MESSAGE = {};
   var OpenMessageHandler = null;
 
-  function GenerateVisitorID(attempts){
+  /*function GenerateVisitorID(attempts){
     return new Promise(function(resolve, reject){
       var id = shortid();
-      var key = r.Key(config.serverkey, "visitor", id);
+      var key = r.Key("visitor", id);
       r.pub.hgetall(key, function(err, obj){
 	if (err){
 	  logDispatch.error("[WORKER %d] %s", workerid, err);
@@ -44,7 +46,7 @@ module.exports = function(workerid, config, r){
 	}
       });
     });
-  }
+  }*/
 
   function ProcessException(e, client){
     logDispatch.error("[WORKER %d] %s", workerid, e.message);
@@ -86,7 +88,7 @@ module.exports = function(workerid, config, r){
   }
 
   function ProcessClientMessage(co, msg){
-    logDispatch.debug("[WORKER %d] Processing message for '%s'.", workerid, co.id);
+    logDispatch.debug("[WORKER %d] Processing message for '%s'.", workerid, (co.id !== null) ? co.id : "UNVALIDATED");
     if (typeof(msg) === 'string'){
       try {
 	msg = JSON.parse(msg);
@@ -99,14 +101,14 @@ module.exports = function(workerid, config, r){
     if ("req" in msg){
       var rname = msg["req"];
       if (rname in MESSAGE){
-	var ctx = CreateContext(co.id, co.client, msg, Dispatch);
+	var ctx = CreateContext(co, msg, Dispatch);
 
 	var cb = MESSAGE[rname].callback;
 	if (MESSAGE[rname].middleware instanceof Middleware){
 	  logDispatch.debug("[WORKER %d] Request '%s' has middleware...", workerid, rname);
 	  var func = MESSAGE[rname].middleware.exec(ctx);
           func.then(function(){
-	    logDispatch.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, co.id);
+	    logDispatch.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, (co.id !== null) ? co.id : "UNVALIDATED");
             cb(ctx, null);
           }).catch(function(e){
             cb(null, e);
@@ -119,18 +121,16 @@ module.exports = function(workerid, config, r){
   }
 
   function DropClient(id){
-    // TODO: Drop any redis data.
-    r.pub.del(r.Key(config.serverkey, "visitor", id), function(err, reply){
-      if (err){
-	logDispatch.error("[WORKER %d] %o", workerid, err);
-      }
-      if (reply !== 1){
-	logDispatch.error("[WORKER %d] Failed to remove ID '%s' from cache server.", workerid, id);
-      }
-      clearTimeout(CLIENT[id].processID);
+    logDispatch.info("[WORKER %d] <Client '%s'> Data will expire in 5 minutes.", workerid, id);
+    r.pub.expire(r.Key("visitor", id), 300 /* Five minutes */);
+    // Clear the buffer processing timeout
+    clearTimeout(CLIENT[id].processID);
+    CLIENT[id].client = null; // The client connection is definitely gone. Keeping the rest in case of a reconnect.
+    // Use this variable for the expiration timeout.
+    CLIENT[id].processID = setTimeout(function(){
       delete CLIENT[id];
-      logDispatch.info("[WORKER %d] <Client '%s'> Removed from grid.", workerid, id);
-    });
+      logDispatch.info("[WORKER %d] <Client '%s'> connection cleaned.", workerid, id);
+    }, 5000*60);
   }
   
   
@@ -226,8 +226,40 @@ module.exports = function(workerid, config, r){
       MESSAGE[OpenMessageHandler].callback = cb;
       return this;
     },
-    
+
     connection:function(client){
+      var co = {
+	id: null,
+	client: client,
+	buffer: [],
+	processID: null
+      };
+      
+      client.on("message", function(msg){
+	logSocket.debug("[WORKER %d] <Client %s> %s", workerid, (co.id !== null) ? co.id : "UNVALIDATED", msg);
+	try {
+	  ProcessClientMessage(co, msg);
+	} catch (e) {
+	  ProcessException(e, co.client);
+	}
+      });
+
+      client.on("close", function(){
+	logSocket.info("[WORKER %d] <Client '%s'> Connection closed.", workerid, co.id);
+	try {
+	  if (co.id !== null){
+	    DropClient(co.id);
+	  }
+	} catch (e) {
+	  ProcessException(e);
+	}
+      });
+
+      logDispatch.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
+    },
+
+    /*
+    connection_OLD:function(client){
       function BuildClientObj(c, id){
 	return {
 	  id: id,
@@ -272,6 +304,7 @@ module.exports = function(workerid, config, r){
       });
       return this;
     },
+    */
 
     send:function(id, msg, immediate){
       immediate = (immediate === true);
@@ -295,16 +328,53 @@ module.exports = function(workerid, config, r){
   };
 
 
-  Dispatch.handler("connection", function(ctx, err){
+  Dispatch.handler("connection", require('./middleware/connection')(config, r), function(ctx, err){
     if (!err){
-      ctx.response.cmd = "connrecognize";
-      ctx.response.data = {
-	id:ctx.id
-      };
+      if (typeof(ctx.co) !== 'undefined'){
+	CLIENT[ctx.co.id] = ctx.co;
+	ctx.co.processID = setTimeout(function(){
+	  ProcessClientBuffers(ctx.co.id);
+	}, (1/60)*1000);
+	logDispatch.debug("[WORKER %d] connection request complete. Client ID '%s'.", workerid, ctx.co.id);
+      }
       ctx.send();
+    } else {
+      logDispatch.error("[WORKER %d] %s", workerid, err);
     }
   });
 
+  /*
+  Dispatch.handler("connection", function(ctx, err){
+    if (!err){
+      // Client already validated. Confirm this is the same client...
+      if (typeof(ctx.co) === undefined){
+	var rkey = r.Key("visitor", ctx.id);
+	r.pub.hget(rkey, "token").then(function(token){
+	  if (token !== ctx.request.token){
+
+	  }
+	});
+      }
+      var rkey = r.Key("visitor", ctx.id);
+      r.pub.hget(rkey, "username").then(function(username){
+	// This will give the newly connected socket basic authentication information. This is NOT "login" information.
+	var data = {
+	  id:ctx.id,
+	  username: username
+	};
+	var token = jwt.sign(data, config.secret); // TODO: Expiration?
+	r.pub.hset(rkey, "token", token).then(function(res){
+	  ctx.response.cmd = "authentication";
+	  ctx.response.data = data;
+	  ctx.response.token = token;
+	  ctx.send();
+	}).catch (function(e){
+	  logDispatch.error("[WORKER %d] Failed to store authentication token for client '%s'.", workerid, ctx.id);
+	});
+      });
+    }
+  });
+  */
 
   return Dispatch;
 };

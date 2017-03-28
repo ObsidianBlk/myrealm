@@ -7,8 +7,8 @@ module.exports = function(cluster, config){
   // -------------------------------------------
   // -- Setting up logging
   var Logger = require('./logger')(config.logging);
-  var logWorker = new Logger("homegrid:worker");
-  var logHTTP = new Logger("homegrid:http");
+  var logWorker = new Logger(config.logDomain + ":worker");
+  var logHTTP = new Logger(config.logDomain + ":http");
   
 
   logWorker.info("Started Worker %d", cluster.worker.id);

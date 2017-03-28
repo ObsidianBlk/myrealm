@@ -11,10 +11,11 @@ module.exports = (function(){
         }
         index = i;
         if (i === fnl.length){
-          Promise.resolve();
+          return Promise.resolve();
         }
         
         try {
+	  console.log(i + " : " + typeof(fnl[i]));
           return Promise.resolve(fnl[i](context, function(){
             return process(i+1);
           }));
@@ -38,7 +39,7 @@ module.exports = (function(){
     };
 
     this.exec = function(ctx){
-      var fn = compose(ctx, middleware);
+      var fn = compose(middleware);
       return fn(ctx);
     };
   }

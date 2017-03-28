@@ -1,5 +1,5 @@
 {
-  "name": "homegrid",
+  "name": "myrealm",
   "version": "1.0.0",
   "description": "Server and client-side library for multiuser VR \"Home Grids\"",
   "main": "server/main.js",

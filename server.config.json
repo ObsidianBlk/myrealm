@@ -1,11 +1,12 @@
 {
   "version":"1.0.0",
   "processes":0,
-  "serverkey":"HOMEGRID_SERVER",
+  "logDomain":"myrealm",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
   "redis":{
     "host":"localhost",
-    "port":6379
+    "port":6379,
+    "serverkey":"MYREALM_SERVER"
   },
   "http":{
     "port":3000,
@@ -15,3 +16,4 @@
     "some/path/here"
   ]
 }
+
