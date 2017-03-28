@@ -90,11 +90,26 @@ module.exports = function(config, r){
 
   function HandleNewConnection(ctx, next){
     ctx.response.cmd = ctx.request.req;
+    log.debug("Generating a new connection");
     GenerateVisitorID(10).then(function(id){
+      log.debug("New Connection ID '%s'", id);
       ctx.co.id = id;
       ctx.response.status = "success";
-      next();
+      var data = {
+	id: ctx.co.id,
+	username: "USER_" + ctx.co.id
+      };
+      var token = jwt.sign(data, config.secret, {expiresIn:15*60});
+      r.pub.hset(r.Key("visitor", ctx.co.id), "token", token).then(function(){
+        ctx.response.data = data;
+        ctx.response.token = token;
+        next();
+      }).catch(function(e){
+        ctx.error("Failed to store new token");
+        next();
+      });
     }).catch(function(e){
+      log.debug("%o", e);
       ctx.error("Failed to generate unique ID.");
       next();
     });

@@ -15,10 +15,16 @@ module.exports = (function(){
         }
         
         try {
-	  console.log(i + " : " + typeof(fnl[i]));
+          return new Promise(function(resolve, reject){
+            fnl[i](context, function(){
+              resolve(process(i+1));
+            });
+          });
+          /*
           return Promise.resolve(fnl[i](context, function(){
             return process(i+1);
           }));
+          */
         } catch (e) {
           return Promise.reject(e);
         }

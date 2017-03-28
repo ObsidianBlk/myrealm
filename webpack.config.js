@@ -4,7 +4,7 @@ var path = require('path');
 
 module.exports = {
   entry: {
-    homegrid: './client/main.js'
+    myrealm: './client/main.js'
   },
   output: {
     filename: '[name]-bundle.js',

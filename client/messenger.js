@@ -12,7 +12,7 @@ module.exports = function(host, port, reconnectDuration){
     socket = new WebSocket('ws://' + host + ':' + port);
     socket.onclose = function(){
       console.log("Connection to server lost. Checking again in " + reconnectDuration + " seconds.");
-      setTimeout(function(){socket = MakeConnection();}, reconnectDuration*1000);
+      setTimeout(function(){MakeConnection();}, reconnectDuration*1000);
     };
 
     socket.onopen = function (event) {
@@ -27,17 +27,27 @@ module.exports = function(host, port, reconnectDuration){
 
     socket.onmessage = function(event){
       console.log("Obtained a message.");
-      var msg = event.data;
-      if (msg.cmd === "connection"){
-	if (msg.status === "error"){
-	  console.log(msg.message);
-	} else {
-	  user_data = msg.data;
-	  currentToken = msg.token;
-	  console.log("ID: " + user_data.id);
-	  console.log("USERNAME: " + user_data.username);
-	  console.log("TOKEN: " + currentToken);
-	}
+      console.log(event);
+      var msg = null;
+      try {
+        msg = JSON.parse(event.data);
+      } catch (e) {
+        console.log("Failed to parse server message.");
+      }
+
+      if (msg !== null){
+        console.log(msg);
+        if (msg.cmd === "connection"){
+	  if (msg.status === "error"){
+	    console.log(msg.message);
+	  } else {
+	    user_data = msg.data;
+	    currentToken = msg.token;
+	    console.log("ID: " + user_data.id);
+	    console.log("USERNAME: " + user_data.username);
+	    console.log("TOKEN: " + currentToken);
+	  }
+        }
       }
     };
   }
