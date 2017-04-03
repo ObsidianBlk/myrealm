@@ -1,19 +1,31 @@
 require("aframe");
-var host = window.document.location.host.replace(/:.*/, '');
-var messenger = require("./messenger")(host, 3000, 5);
-/*
-var socket = new WebSocket('ws://' + host + ':3000');
-socket.onopen = function (event) {
-  console.log("Socket connected to server!");
-  //socket.send("Hello server!");
-};
+window.REALM = (function(){
+  var host = window.document.location.host.replace(/:.*/, '');
 
-socket.onmessage = function(event){
-  console.log("Obtained a message.");
-  console.log(event);
-};
+  var obj = {};
+  Object.defineProperties(obj, {
+    "messenger":{
+      enumerable: true,
+      writable: false,
+      configurable: false,
+      value: require("./messenger")(host, 3000, 5)
+    },
 
-socket.onclose = function(){
+    "AFRAME":{
+      enumerable: true,
+      writable: false,
+      configurable: false,
+      value: window.AFRAME
+    },
 
-};
-*/
+    "THREE":{
+      enumerable: true,
+      writable: false,
+      configurable: false,
+      value: window.THREE
+    }
+  });
+
+  return obj;
+})();
+

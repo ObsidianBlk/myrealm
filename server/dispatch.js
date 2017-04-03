@@ -258,53 +258,6 @@ module.exports = function(workerid, config, r){
       logDispatch.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
     },
 
-    /*
-    connection_OLD:function(client){
-      function BuildClientObj(c, id){
-	return {
-	  id: id,
-	  client: c,
-	  buffer: [],
-	  processID: setTimeout(function(){
-	    ProcessClientBuffers(id);
-	  }, 1000*(1/60))
-	};
-      }
-
-      function DefineClientEvents(co){
-	co.client.on("message", function(msg){
-	  logSocket.debug("[WORKER %d] <Client %s> %s", workerid, co.id, msg);
-	  try {
-	    ProcessClientMessage(co, msg);
-	  } catch (e) {
-	    ProcessException(e, co.client);
-	  }
-	});
-
-	co.client.on("close", function(){
-	  logSocket.info("[WORKER %d] <Client '%s'> Connection closed.", workerid, co.id);
-	  try {
-	    DropClient(co.id);
-	  } catch (e) {
-	    ProcessException(e);
-	  }
-	});
-	CLIENT[co.id] = co;
-	logDispatch.info("[WORKER %d] New Client added with ID '%s'.", workerid, co.id);
-      }
-      
-      GenerateVisitorID(10).then(function(id){
-	DefineClientEvents(BuildClientObj(client, id));
-	// Faking a request to kick the pig.
-	ProcessClientMessage(CLIENT[id], {
-	  req: "connection"
-	}, true);
-      }).catch(function(e){
-	logDispatch.error("[WORKER %d] %s", workerid, e.message);
-      });
-      return this;
-    },
-    */
 
     send:function(id, msg, immediate){
       immediate = (immediate === true);
@@ -328,7 +281,7 @@ module.exports = function(workerid, config, r){
   };
 
 
-  Dispatch.handler("connection", require('./middleware/connection')(config, r), function(ctx, err){
+  Dispatch.handler("connection", require('./middleware/connections')(config, r), function(ctx, err){
     if (!err){
       if (typeof(ctx.co) !== 'undefined'){
 	CLIENT[ctx.co.id] = ctx.co;
@@ -342,39 +295,6 @@ module.exports = function(workerid, config, r){
       logDispatch.error("[WORKER %d] %s", workerid, err);
     }
   });
-
-  /*
-  Dispatch.handler("connection", function(ctx, err){
-    if (!err){
-      // Client already validated. Confirm this is the same client...
-      if (typeof(ctx.co) === undefined){
-	var rkey = r.Key("visitor", ctx.id);
-	r.pub.hget(rkey, "token").then(function(token){
-	  if (token !== ctx.request.token){
-
-	  }
-	});
-      }
-      var rkey = r.Key("visitor", ctx.id);
-      r.pub.hget(rkey, "username").then(function(username){
-	// This will give the newly connected socket basic authentication information. This is NOT "login" information.
-	var data = {
-	  id:ctx.id,
-	  username: username
-	};
-	var token = jwt.sign(data, config.secret); // TODO: Expiration?
-	r.pub.hset(rkey, "token", token).then(function(res){
-	  ctx.response.cmd = "authentication";
-	  ctx.response.data = data;
-	  ctx.response.token = token;
-	  ctx.send();
-	}).catch (function(e){
-	  logDispatch.error("[WORKER %d] Failed to store authentication token for client '%s'.", workerid, ctx.id);
-	});
-      });
-    }
-  });
-  */
 
   return Dispatch;
 };

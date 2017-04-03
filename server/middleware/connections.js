@@ -4,7 +4,7 @@ module.exports = function(config, r){
   var Promise = require('bluebird');
   var shortid = require('shortid');
   var Logger = require('../logger')(config.logging);
-  var log = new Logger(config.logDomain + ":middleware:connectionNew");
+  var log = new Logger(config.logDomain + ":middleware:connections");
 
 
   function GenerateVisitorID(attempts){
@@ -48,7 +48,7 @@ module.exports = function(config, r){
       
       if (token === ctx.request.token){
 	// Check to see if the token has expired yet.
-	jwt.varify(token, config.secret, function(err, decoded){
+	jwt.verify(token, config.secret, function(err, decoded){
 	  if (err){
 	    ctx.error(err.message);
 	  } else if (decoded.id !== ctx.request.data.id){
@@ -81,6 +81,7 @@ module.exports = function(config, r){
 	next();
       }
     }).catch(function(e){
+      log.debug("%o", e);
       ctx.response.cmd = ctx.request.req;
       ctx.error("Failed to find token for id.");
       next();

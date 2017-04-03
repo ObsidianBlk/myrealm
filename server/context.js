@@ -21,6 +21,8 @@ module.exports = function(co, request, dispatch){
     }
   };
 
+  var tokenData = null;
+
   if (co.id !== null){
     ctx.broadcast = function(){
       dispatch.broadcast(ctx.response, co.id);
@@ -48,6 +50,20 @@ module.exports = function(co, request, dispatch){
       writable: false,
       configurable: false,
       value: (co.id !== null) ? co.id : "UNVALIDATED"
+    },
+
+    "token":{
+      get:function(){return tokenData;},
+      set:function(d){
+	if (d.name === Object.name){
+	  if (tokenData !== null){
+	    throw new Error("Token data can only be defined once.");
+	  }
+	  tokenData = d;
+	} else {
+	  throw new TypeError("Expected Object instance.");
+	}
+      }
     }
   });
 
