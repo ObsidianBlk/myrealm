@@ -3,50 +3,16 @@
 
 
 module.exports = function(workerid, config, r){
-  //var shortid = require('shortid');
-  //var Promise = require('bluebird');
-  var Middleware = require('../common/middleware');
+  var Middleware = require('./middleware');
   var CreateContext = require('./context');
   var Logger = require('./logger')(config.logging);
   var logSocket = new Logger(config.logDomain + ":sockets");
   var logDispatch = new Logger(config.logDomain + ":dispatch");
 
-  //var jwt = require('jsonwebtoken');
-
   var CLIENT = {};
   var MESSAGE = {};
   var OpenMessageHandler = null;
-
-  /*function GenerateVisitorID(attempts){
-    return new Promise(function(resolve, reject){
-      var id = shortid();
-      var key = r.Key("visitor", id);
-      r.pub.hgetall(key, function(err, obj){
-	if (err){
-	  logDispatch.error("[WORKER %d] %s", workerid, err);
-	  reject(err);
-	} else {
-	  if (obj.length > 0){
-	    if (attempts > 0){
-	      resolve(GenerateVisitorID(attempts-1));
-	    } else {
-	      reject(new Error("Failed to obtain a unique visitor ID."));
-	    }
-	  } else {
-	    r.pub.hmset(key, {
-	      username: "USER_" + id,
-	      validated: false
-	    }, function(err){
-	      if (err){
-		reject(new Error("Failed to generate hash for new visitor ID '" + id + "'. \"" + err + "\"."));
-	      }
-	      resolve(id);
-	    });
-	  }
-	}
-      });
-    });
-  }*/
+  
 
   function ProcessException(e, client){
     logDispatch.error("[WORKER %d] %s", workerid, e.message);

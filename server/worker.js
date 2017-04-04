@@ -42,17 +42,6 @@ module.exports = function(cluster, config){
   });
 
   socketServer.on('connection', function(client){
-    /*
-    logSocket.info("[WORKER %d] Client connected.", cluster.worker.id);
-
-    client.on("message", function(msg){
-      logSocket.debug("[WORKER %d] %s", cluster.worker.id, msg);
-    });
-
-    client.on("close", function(){
-      logSocket.info("[WORKER %d] Client connection closed.", cluster.worker.id);
-    });
-    */
     Dispatch.connection(client);
   });
 
