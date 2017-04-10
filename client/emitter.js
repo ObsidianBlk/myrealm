@@ -2,7 +2,7 @@
 module.exports = (function(){
   function Emitter(){
     var EVENT = {};
-    this.listen = function(name, fn, owner, once){
+    this.on = function(name, fn, owner, once){
       if (typeof(fn) !== 'function'){
 	throw new TypeError("Expected a function.");
       }

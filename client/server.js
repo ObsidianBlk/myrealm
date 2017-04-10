@@ -7,7 +7,7 @@ module.exports = function(emitter, host, options){
     options.reconnectDuration = 5; // In Seconds.
   }
   if (typeof(options.port) !== 'number' || options.port <= 0){
-    options.port = 3000;
+    options.port = null;
   }
   options.ssl = (options.ssl === true);
 
@@ -50,7 +50,7 @@ module.exports = function(emitter, host, options){
 
   
   function MakeConnection(){
-    var connectionString = ((options.ssl) ? "wss://" : "ws://") + host + ":" + options.port;
+    var connectionString = ((options.ssl) ? "wss://" : "ws://") + host + ((options.port !== null) ? ":" + options.port : "");
     socket = new WebSocket(connectionString);
     socket.onclose = function(){
       console.log("Connection to server lost. Checking again in " + options.reconnectDuration + " seconds.");
@@ -79,13 +79,14 @@ module.exports = function(emitter, host, options){
   }
 
   // Listening for "connection" status from the server.
-  emitter.listen("connection", function(msg){
+  emitter.on("connection", function(msg){
     if (msg.status === "error"){
       console.error("CONNECTION ERROR: " + msg.message);
     } else {
       user_data = msg.data;
       currentToken = msg.token;
       console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
+      emitter.emit("connected", user_data.username);
     }
   });
 

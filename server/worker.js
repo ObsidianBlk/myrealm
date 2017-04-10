@@ -15,6 +15,7 @@ module.exports = function(cluster, config){
 
   // -------------------------------------------
   // -- Getting basic modules
+  var fs = require('fs');
   var path = require('path');
   var moment = require('moment');
 
@@ -29,16 +30,27 @@ module.exports = function(cluster, config){
   var socketServer = new (require('uws').Server)({server:server});
   var Dispatch = require('./dispatch')(cluster.worker.id, config, r);
 
+  app.set('view engine', 'html');
+  app.engine('html', require('hbs').__express);
+  
   // Configuring server paths
   app.get('/', function(req, res){
-    res.sendFile(path.resolve(config.http.path + 'index.html'));
+    res.render("index", config.site);
+    //res.sendFile(path.resolve(config.http.path + 'index.html'));
   });
 
   // serves all the static files
   app.get(/^(.+)$/, function(req, res){
     logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
-    //console.log('static file request : ' + req.params);
-    res.sendFile(path.resolve(config.http.path + req.params[0])); 
+    var resourcePath = path.resolve(config.http.path + req.params[0]);
+    fs.exists(resourcePath, function(exists){
+      if (exists){
+	res.sendFile(resourcePath);
+      } else {
+	logHTTP.debug("[WORKER %d] Requested file does not exist, '%s'", cluster.worker.id, resourcePath);
+	res.status(404).send("Resource '" + req.params[0] + "' Not found.");
+      }
+    }); 
   });
 
   socketServer.on('connection', function(client){
@@ -47,7 +59,6 @@ module.exports = function(cluster, config){
 
   // Start the HTTP server
   logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.http.port);
-  //console.log("Worker " + cluster.worker.id + " starting server on port " + config.http.port);
   server.listen(config.http.port);
 
 };
