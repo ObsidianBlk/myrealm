@@ -3,6 +3,7 @@
 
 
 module.exports = function(workerid, config, r){
+  var Promise = require('bluebird');
   var Middleware = require('./middleware');
   var CreateContext = require('./context');
   var Logger = require('./logger')(config.logging);
@@ -12,6 +13,13 @@ module.exports = function(workerid, config, r){
   var CLIENT = {};
   var MESSAGE = {};
   var OpenMessageHandler = null;
+
+  var broadcastKey = r.Key("INTERNAL", "BROADCAST");
+  r.sub.on(broadcastKey, function(channel, message){
+    var broadcast = JSON.parse(message);
+    ProcessBroadcast(broadcast.message, broadcast.sender, broadcast.receiver);
+  });
+  r.sub.subscribe(broadcastKey);
   
 
   function ProcessException(e, client){
@@ -84,6 +92,26 @@ module.exports = function(workerid, config, r){
 	}
       }
     }
+  }
+
+  function ProcessBroadcast(msg, sender, receivers){
+    // Using a promise so as to handle this async. Not returning a value, though, so no then() statement.
+    new Promise(function(resolve, reject){
+      if (receivers.length > 0){
+	receivers.forEach(function(rID){
+	  if ((rID in CLIENT) && rID !== sender){
+	    Dispatch.send(rID, msg);
+	  }
+	});
+      } else { // If there are no specific receivers, send to EVERYONE (except the sender).
+	Object.Keys(CLIENT).forEach(function(cID){
+	  if (cID !== sender){
+	    Dispatch.send(cID, msg);
+	  }
+	});
+      }
+      resolve(); // Do I need to use this, since I'm not returning a value?
+    });
   }
 
   function DropClient(id){
@@ -231,7 +259,7 @@ module.exports = function(workerid, config, r){
 	var co = CLIENT[id];
 	if (immediate === true){
 	  logDispatch.debug("[WORKER %d] Sending message to client '%s'.", workerid, co.id);
-	  co.client.send(JSON.stringify(msg));
+	  co.client.send((typeof(msg) !== 'string') ? JSON.stringify(msg) : msg);
 	} else {
 	  logDispatch.debug("[WORKER %d] Buffering message to client '%s'.", workerid, co.id);
 	  co.buffer.push(msg);
@@ -241,8 +269,18 @@ module.exports = function(workerid, config, r){
       }
     },
 
-    broadcast: function(msg, fromid){
-      // TODO: Flesh this out!
+    broadcast: function(msg, sender, receivers){
+      sender = (typeof(sender) !== 'string') ? null : sender;
+      if (typeof(receivers) !== 'undefined' && receivers !== null && receivers.constructor.name !== Array.name){
+	receivers = [];
+      }
+      
+      var bdat = {
+	message: msg,
+	sender: sender,
+	receivers: receivers
+      };
+      r.pub.set(broadcastKey, JSON.stringify(bdat));      
     }
   };
 

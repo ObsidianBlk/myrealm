@@ -24,8 +24,8 @@ module.exports = function(co, request, dispatch){
   var tokenData = null;
 
   if (co.id !== null){
-    ctx.broadcast = function(){
-      dispatch.broadcast(ctx.response, co.id);
+    ctx.broadcast = function(receivers){
+      dispatch.broadcast(ctx.response, co.id, receivers);
     };
 
     ctx.send = function(){
