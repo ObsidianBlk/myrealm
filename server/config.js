@@ -111,7 +111,7 @@ module.exports = (function(){
   try {
     var config = require(path.resolve('server.config.json'));
   } catch (e) {
-    console.error("Failed to load Server.config.json.\n\"" + e.message + "\".\nUsing default configuration.");
+    console.error("Failed to load 'server.config.json'.\n\"" + e.message + "\".\nUsing default configuration.");
     config = null;
   }
 

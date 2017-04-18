@@ -6,7 +6,7 @@ module.exports = function(cluster, config){
 
   // -------------------------------------------
   // -- Setting up logging
-  var Logger = require('./logger')(config.logging);
+  var Logger = require('./utils/logger')(config.logging);
   var logWorker = new Logger(config.logDomain + ":worker");
   var logHTTP = new Logger(config.logDomain + ":http");
   
@@ -21,14 +21,15 @@ module.exports = function(cluster, config){
 
   // -------------------------------------------
   // -- Setting up Redis Pub/Sub connections...
-  var r = require('./redisPubSub')(cluster.worker.id, config);
+  var r = require('./utils/redisPubSub')(cluster.worker.id, config);
 
   // -------------------------------------------
   // -- Getting HTTP and Socket servers
   var app = require('express')();
   var server = require('http').createServer(app);
   var socketServer = new (require('uws').Server)({server:server});
-  var Dispatch = require('./dispatch')(cluster.worker.id, config, r);
+  var Dispatch = require('./sockets/dispatch')(cluster.worker.id, config, r);
+  var Ether = require('./realm/ether')(Dispatch, config, r);
 
   app.set('view engine', 'html');
   app.engine('html', require('hbs').__express);

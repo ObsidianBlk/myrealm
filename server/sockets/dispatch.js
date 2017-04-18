@@ -4,15 +4,17 @@
 
 module.exports = function(workerid, config, r){
   var Promise = require('bluebird');
-  var Middleware = require('./middleware');
+  var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
-  var Logger = require('./logger')(config.logging);
+  var Logger = require('../utils/logger')(config.logging);
   var logSocket = new Logger(config.logDomain + ":sockets");
   var logDispatch = new Logger(config.logDomain + ":dispatch");
 
   var CLIENT = {};
   var MESSAGE = {};
   var OpenMessageHandler = null;
+
+  var clientBufferTransmitRate = (1/60)*1000;
 
   var broadcastKey = r.Key("INTERNAL", "BROADCAST");
   r.sub.on(broadcastKey, function(channel, message){
@@ -33,7 +35,6 @@ module.exports = function(workerid, config, r){
   }
 
   function ProcessClientBuffers(id){
-    var timeout = 1000*(1/60); // TODO: Make this a config variable.
     var co = CLIENT[id];
     var buff = null;
 
@@ -58,7 +59,7 @@ module.exports = function(workerid, config, r){
     // Wait for the next timeout to process.
     co.processID = setTimeout(function(){
       ProcessClientBuffers(id);
-    }, timeout);
+    }, clientBufferTransmitRate);
   }
 
   function ProcessClientMessage(co, msg){
@@ -75,7 +76,16 @@ module.exports = function(workerid, config, r){
     if ("req" in msg){
       var rname = msg["req"];
       if (rname in MESSAGE){
-	var ctx = CreateContext(co, msg, Dispatch);
+	var ctx = CreateContext(co, msg, {
+	  broadcast: Dispatch.broadcast,
+	  send: Dispatch.send,
+	  register: (co.id === null) ? function(){
+	    if (co.id !== null){
+	      logDispatch.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
+	      CLIENT[co.id] = co;
+	    }
+	  } : null
+	});
 
 	var cb = MESSAGE[rname].callback;
 	if (MESSAGE[rname].middleware instanceof Middleware){
@@ -257,6 +267,12 @@ module.exports = function(workerid, config, r){
       immediate = (immediate === true);
       if (id in CLIENT){
 	var co = CLIENT[id];
+	if (co.processID === null){
+	  co.processID = setTimeout(function(){
+	    ProcessClientBuffers(co.id);
+	  }, clientBufferTransmitRate);
+	}
+	
 	if (immediate === true){
 	  logDispatch.debug("[WORKER %d] Sending message to client '%s'.", workerid, co.id);
 	  co.client.send((typeof(msg) !== 'string') ? JSON.stringify(msg) : msg);
@@ -285,18 +301,12 @@ module.exports = function(workerid, config, r){
   };
 
 
-  Dispatch.handler("connection", require('./middleware/connections')(config, r), function(ctx, err){
-    if (!err){
-      if (typeof(ctx.co) !== 'undefined'){
-	CLIENT[ctx.co.id] = ctx.co;
-	ctx.co.processID = setTimeout(function(){
-	  ProcessClientBuffers(ctx.co.id);
-	}, (1/60)*1000);
-	logDispatch.debug("[WORKER %d] connection request complete. Client ID '%s'.", workerid, ctx.co.id);
-      }
-      ctx.send();
-    } else {
-      logDispatch.error("[WORKER %d] %s", workerid, err);
+  Object.defineProperties(Dispatch, {
+    "workerid":{
+      enumerable: true,
+      configurable:false,
+      writable:false,
+      value:workerid
     }
   });
 

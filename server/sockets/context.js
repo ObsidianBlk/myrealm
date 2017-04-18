@@ -12,7 +12,7 @@ clients (assumed to be) built in send() method.
 @param request Object containing the data of the original request.
 @param broadcastFunc [OPTIONAL] A function that will broadcast any generated response to all currently connected clients.
 ----------------------------------------------------------------------- */
-module.exports = function(co, request, dispatch){
+module.exports = function(co, request, d){
   var ctx = {
     response: {},
     error: function(message){
@@ -21,18 +21,28 @@ module.exports = function(co, request, dispatch){
     }
   };
 
+  if (typeof(d) !== typeof({})){
+    d = {};
+  }
+  
+  var broadcast = (typeof(d.broadcast) === 'function') ? d.broadcast : function(){};
+  var send = (typeof(d.send) === 'function') ? d.send : function(){};
+
   var tokenData = null;
 
   if (co.id !== null){
     ctx.broadcast = function(receivers){
-      dispatch.broadcast(ctx.response, co.id, receivers);
+      broadcast(ctx.response, co.id, receivers);
     };
 
     ctx.send = function(){
-      dispatch.send(co.id, ctx.response);
+      send(co.id, ctx.response);
     };
   } else {
     ctx.send = function(){
+      if (typeof(d.register) === 'function'){
+	d.register();
+      }
       co.client.send(JSON.stringify(ctx.response));
     };
 

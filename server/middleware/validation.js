@@ -3,7 +3,7 @@ module.exports = function(config, r){
   var jwt = require('jsonwebtoken');
   var Promise = require('bluebird');
   var shortid = require('shortid');
-  var Logger = require('../logger')(config.logging);
+  var Logger = require('../utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":middleware:validation");
 
 

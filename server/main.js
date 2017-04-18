@@ -4,7 +4,7 @@ var config = require("./config");
 var cluster = require('cluster');
 
 if (cluster.isMaster){
-  var Logger = require('./logger')(config.logging);
+  var Logger = require('./utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":master");
   var numCPUs = require('os').cpus().length;
 
