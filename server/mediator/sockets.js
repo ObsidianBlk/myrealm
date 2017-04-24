@@ -1,14 +1,21 @@
 
 // TODO: Remember hellojs as a possible social auth middleware.
 
-
+/**
+ * Socket Client Hub
+ * @module server/mediator/sockets
+ * @author Bryan Miller <bmiller1008@gmail.com>
+ * @copyright Bryan Miller 2017
+ */
 module.exports = function(workerid, config, r){
   var Promise = require('bluebird');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
   var Logger = require('../utils/logger')(config.logging);
   var logSocket = new Logger(config.logDomain + ":sockets");
-  var logDispatch = new Logger(config.logDomain + ":dispatch");
+
+  // This will hold the socket server that this whole module runs on!
+  var sserver = null;
 
   var CLIENT = {};
   var MESSAGE = {};
@@ -25,7 +32,7 @@ module.exports = function(workerid, config, r){
   
 
   function ProcessException(e, client){
-    logDispatch.error("[WORKER %d] %s", workerid, e.message);
+    logSocket.error("[WORKER %d] %s", workerid, e.message);
     if (typeof(client) !== 'undefined'){
       client.send(JSON.stringify({
 	status: "F",
@@ -44,13 +51,13 @@ module.exports = function(workerid, config, r){
     case 1: // Send the 0th entry directly.
       buff = co.buffer;
       co.buffer = [];
-      logDispatch.debug("[WORKER %d] Sending command to client '%s'.", workerid, co.id);
+      logSocket.debug("[WORKER %d] Sending command to client '%s'.", workerid, co.id);
       co.client.send(JSON.stringify(buff[0]));
       break;
     default: // Send all msgs in a special command.
       buff = co.buffer;
       co.buffer = [];
-      logDispatch.debug("[WORKER %d] Sending buffered commands to client '%s'.", workerid, co.id);
+      logSocket.debug("[WORKER %d] Sending buffered commands to client '%s'.", workerid, co.id);
       co.client.send(JSON.stringify({
 	cmds:buff
       }));
@@ -63,12 +70,12 @@ module.exports = function(workerid, config, r){
   }
 
   function ProcessClientMessage(co, msg){
-    logDispatch.debug("[WORKER %d] Processing message for '%s'.", workerid, (co.id !== null) ? co.id : "UNVALIDATED");
+    logSocket.debug("[WORKER %d] Processing message for '%s'.", workerid, (co.id !== null) ? co.id : "UNVALIDATED");
     if (typeof(msg) === 'string'){
       try {
 	msg = JSON.parse(msg);
       } catch (e) {
-	logDispatch.warning("[WORKER %d] Client request not a valid JSON object.", workerid);
+	logSocket.warning("[WORKER %d] Client request not a valid JSON object.", workerid);
 	return;
       }
     }
@@ -77,11 +84,11 @@ module.exports = function(workerid, config, r){
       var rname = msg["req"];
       if (rname in MESSAGE){
 	var ctx = CreateContext(co, msg, {
-	  broadcast: Dispatch.broadcast,
-	  send: Dispatch.send,
+	  broadcast: Sockets.broadcast,
+	  send: Sockets.send,
 	  register: (co.id === null) ? function(){
 	    if (co.id !== null){
-	      logDispatch.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
+	      logSocket.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
 	      CLIENT[co.id] = co;
 	    }
 	  } : null
@@ -89,10 +96,10 @@ module.exports = function(workerid, config, r){
 
 	var cb = MESSAGE[rname].callback;
 	if (MESSAGE[rname].middleware instanceof Middleware){
-	  logDispatch.debug("[WORKER %d] Request '%s' has middleware...", workerid, rname);
+	  logSocket.debug("[WORKER %d] Request '%s' has middleware...", workerid, rname);
 	  var func = MESSAGE[rname].middleware.exec(ctx);
           func.then(function(){
-	    logDispatch.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, (co.id !== null) ? co.id : "UNVALIDATED");
+	    logSocket.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, (co.id !== null) ? co.id : "UNVALIDATED");
             cb(ctx, null);
           }).catch(function(e){
             cb(null, e);
@@ -110,13 +117,13 @@ module.exports = function(workerid, config, r){
       if (receivers.length > 0){
 	receivers.forEach(function(rID){
 	  if ((rID in CLIENT) && rID !== sender){
-	    Dispatch.send(rID, msg);
+	    Sockets.send(rID, msg);
 	  }
 	});
       } else { // If there are no specific receivers, send to EVERYONE (except the sender).
 	Object.Keys(CLIENT).forEach(function(cID){
 	  if (cID !== sender){
-	    Dispatch.send(cID, msg);
+	    Sockets.send(cID, msg);
 	  }
 	});
       }
@@ -125,7 +132,7 @@ module.exports = function(workerid, config, r){
   }
 
   function DropClient(id){
-    logDispatch.info("[WORKER %d] <Client '%s'> Data will expire in 5 minutes.", workerid, id);
+    logSocket.info("[WORKER %d] <Client '%s'> Data will expire in 5 minutes.", workerid, id);
     r.pub.expire(r.Key("visitor", id), 300 /* Five minutes */);
     // Clear the buffer processing timeout
     clearTimeout(CLIENT[id].processID);
@@ -133,32 +140,52 @@ module.exports = function(workerid, config, r){
     // Use this variable for the expiration timeout.
     CLIENT[id].processID = setTimeout(function(){
       delete CLIENT[id];
-      logDispatch.info("[WORKER %d] <Client '%s'> connection cleaned.", workerid, id);
+      logSocket.info("[WORKER %d] <Client '%s'> connection cleaned.", workerid, id);
     }, 5000*60);
   }
   
-  
-  var Dispatch = {
-    // @param name Message name that triggers this handler.
-    // @param [middleware, ...] Zero or more middleware used to process the message.
-    // @param callback Function called to finalize the message.
+
+  /**
+   * @namespace Sockets
+   * @description Manages socket client connections, incomming event handlers, and sending outgoing transmissions to single or multiple clients.
+   */
+  var Sockets = {
+    begin: function(http){
+      if (sserver === null){
+	sserver = new (require('uws').Server)({server:http});
+	sserver.on('connection', function(client){
+	  Sockets.connection(client);
+	});
+      }
+    },
+
+    
+    /**
+     * Defines a complete message handler in a single method call. Allows function chaining.
+     *
+     * @method handler
+     * @param {string} name - Name of the message command this handler works with.
+     * @param {... middleware} - Zero or more middleware callbacks used to process the message.
+     * @param {function} callback - Callback function called after all middleware has completed.
+     * @returns {this}
+     */
     handler:function(){
       var args = Array.prototype.slice.call(arguments, 0);
       if (args.length < 2){
 	if (args.length < 1){
-	  logDispatch.debug("[WORKER %d] Missing message name.", workerid);
+	  logSocket.debug("[WORKER %d] Missing message name.", workerid);
 	  throw new Error("Missing message name.");
 	}
-	logDispatch.debug("[WORKER %d] Missing message callback handler function.", workerid);
+	logSocket.debug("[WORKER %d] Missing message callback handler function.", workerid);
 	throw new Error("Missing message callback handler function.");
       }
 
       if (typeof(args[0]) !== 'string'){
-	logDispatch.debug("[WORKER %d] Message name expected to be a string.", workerid);
+	logSocket.debug("[WORKER %d] Message name expected to be a string.", workerid);
 	throw new TypeError("Message name expected to be a string.");
       }
       if (typeof(args[args.length-1]) !== 'function'){
-	logDispatch.debug("[WORKER %d] Expected callback function.", workerid);
+	logSocket.debug("[WORKER %d] Expected callback function.", workerid);
 	throw new TypeError("Expected callback function.");
       }
 
@@ -167,7 +194,7 @@ module.exports = function(workerid, config, r){
 	mw = new Middleware(); //args.slice(1, args.length-1);
 	for (var i=1; i < args.length-1; i++){
 	  if (typeof(args[i]) !== 'function'){
-	    logDispatch.debug("[WORKER %d] Expected middleware function.", workerid);
+	    logSocket.debug("[WORKER %d] Expected middleware function.", workerid);
 	    throw new TypeError("Expected middleware function.");
 	  }
           mw.use(args[i]);
@@ -181,6 +208,13 @@ module.exports = function(workerid, config, r){
       return this;
     },
 
+    /**
+     * Starts the definition of a message handler. Handler is not finished until finishHandler() is called. Allows function chaining.
+     *
+     * @method startHandler
+     * @param {string} name - Name of the message command this handler works with.
+     * @returns {this}
+     */
     startHandler:function(name){
       if (OpenMessageHandler !== null){
 	delete MESSAGE[OpenMessageHandler];
@@ -193,13 +227,22 @@ module.exports = function(workerid, config, r){
       return this;
     },
 
+    /**
+     * Adds middleware to be used with the open handler definition. startHandler() must be called first.
+     * Handler is not finished until finishHandler() is called. Allows function chaining.
+     * NOTE: Middleware callbacks are executed in the order they are included with this method.
+     *
+     * @method use
+     * @param {function} fn - Middleware callback function to include in handler.
+     * @returns {this}
+     */
     use:function(fn){
       if (OpenMessageHandler === null){
-	logDispatch.debug("[WORKER %d] No open message handler started.", workerid);
+	logSocket.debug("[WORKER %d] No open message handler started.", workerid);
 	throw new Error("No open message handler started.");
       }
       if (typeof(fn) !== 'function'){
-	logDispatch.debug("[WORKER %d] Expected middleware function.", workerid);
+	logSocket.debug("[WORKER %d] Expected middleware function.", workerid);
 	throw new TypeError("Expected middleware function.");
       }
       if (MESSAGE[OpenMessageHandler].middleware === null){
@@ -209,13 +252,21 @@ module.exports = function(workerid, config, r){
       return this;
     },
 
+    /**
+     * Finishes the currently open message handler definition by defining the callback function executed at the end of the middleware chain.
+     * startHandler() must be called first. Allows function chaining.
+     *
+     * @method finishHandler
+     * @param {string} name - Name of the message command this handler works with.
+     * @returns {this}
+     */
     finishHandler:function(cb){
       if (OpenMessageHandler === null){
-	logDispatch.debug("[WORKER %d] No open message handler started.", workerid);
+	logSocket.debug("[WORKER %d] No open message handler started.", workerid);
 	throw new Error("No open message handler started.");
       }
       if (typeof(cb) !== 'function'){
-	logDispatch.debug("[WORKER %d] Expected callback function.", workerid);
+	logSocket.debug("[WORKER %d] Expected callback function.", workerid);
 	throw new TypeError("Expected callback function.");
       }
       // Convert our array of middleware functions into a middleware object.
@@ -231,6 +282,15 @@ module.exports = function(workerid, config, r){
       return this;
     },
 
+
+    /**
+     * Registers a socket client to manage.
+     * NOTE: Client must send a "connection" handshake to be given an ID otherwise client is ignored (soon to be closed).
+     *
+     * @method connection
+     * @param {socket} client - New client socket connection.
+     * @returns {this}
+     */
     connection:function(client){
       var co = {
 	id: null,
@@ -259,10 +319,20 @@ module.exports = function(workerid, config, r){
 	}
       });
 
-      logDispatch.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
+      logSocket.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
     },
 
 
+    /**
+     * Sends msg object to the client with the given id. If immediate is true, the message will not be queued; instead sent immediately.
+     * NOTE: This method sends the message object as given after being converted to a JSON string..
+     *
+     * @method send
+     * @param {string} id - The id of the client socket to send to.
+     * @param {object} msg - Object to send to the client (as a JSON string)
+     * @param {boolean} [immediate=false] - If true, message will be sent immediately instead of being buffered.
+     * @returns {this}
+     */
     send:function(id, msg, immediate){
       immediate = (immediate === true);
       if (id in CLIENT){
@@ -274,17 +344,29 @@ module.exports = function(workerid, config, r){
 	}
 	
 	if (immediate === true){
-	  logDispatch.debug("[WORKER %d] Sending message to client '%s'.", workerid, co.id);
+	  logSocket.debug("[WORKER %d] Sending message to client '%s'.", workerid, co.id);
 	  co.client.send((typeof(msg) !== 'string') ? JSON.stringify(msg) : msg);
 	} else {
-	  logDispatch.debug("[WORKER %d] Buffering message to client '%s'.", workerid, co.id);
+	  logSocket.debug("[WORKER %d] Buffering message to client '%s'.", workerid, co.id);
 	  co.buffer.push(msg);
 	}
       } else {
-	logDispatch.error("[WORKER %d] No client with ID '%s'.", workerid, id);
+	logSocket.error("[WORKER %d] No client with ID '%s'.", workerid, id);
       }
     },
 
+    /**
+     * Broadcasts the given message object to every connected client.
+     * Optionally...
+     * If sender id is given, the sender will NOT be included in the broadcast.
+     * If a list of "receivers" ids are given, only those clients in the list will recieve the broadcast.
+     *
+     * @method broadcast
+     * @param {object} msg - Object to send to the clients (as a JSON string)
+     * @param {string} [sender=null] - ID of the sending client.
+     * @param {string[]} [receivers=null] - Array of client id strings to send message to.
+     * @returns {this}
+     */
     broadcast: function(msg, sender, receivers){
       sender = (typeof(sender) !== 'string') ? null : sender;
       if (typeof(receivers) !== 'undefined' && receivers !== null && receivers.constructor.name !== Array.name){
@@ -301,7 +383,7 @@ module.exports = function(workerid, config, r){
   };
 
 
-  Object.defineProperties(Dispatch, {
+  Object.defineProperties(Sockets, {
     "workerid":{
       enumerable: true,
       configurable:false,
@@ -310,5 +392,15 @@ module.exports = function(workerid, config, r){
     }
   });
 
-  return Dispatch;
+
+  // Special client request to be handled here.
+  Sockets.handler("connection",require('../middleware/connections')(config, r), function(ctx, err){
+    if (!err){
+      ctx.send();
+    } else {
+      logEther.error("[WORKER %d] %s", workerid, err);
+    }
+  });
+
+  return Sockets;
 };

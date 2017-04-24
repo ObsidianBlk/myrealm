@@ -27,9 +27,9 @@ module.exports = function(cluster, config){
   // -- Getting HTTP and Socket servers
   var app = require('express')();
   var server = require('http').createServer(app);
-  var socketServer = new (require('uws').Server)({server:server});
-  var Dispatch = require('./sockets/dispatch')(cluster.worker.id, config, r);
-  var Ether = require('./realm/ether')(Dispatch, config, r);
+  var Sockets = require('./mediator/sockets')(cluster.worker.id, config, r);
+  var Emitter = new require('./mediator/aemitter')();
+  var Ether = require('./realm/ether')(Sockets, Emitter, config, r);
 
   app.set('view engine', 'html');
   app.engine('html', require('hbs').__express);
@@ -54,9 +54,8 @@ module.exports = function(cluster, config){
     }); 
   });
 
-  socketServer.on('connection', function(client){
-    Dispatch.connection(client);
-  });
+  // Connects the web sockets server to the http server.
+  Sockets.begin(server);
 
   // Start the HTTP server
   logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.http.port);
