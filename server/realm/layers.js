@@ -1,5 +1,5 @@
 
-module.exports = function(sockets, emitter, config, r){
+module.exports = function(m, r, config){
 
   
   

@@ -27,9 +27,17 @@ module.exports = function(cluster, config){
   // -- Getting HTTP and Socket servers
   var app = require('express')();
   var server = require('http').createServer(app);
-  var Sockets = require('./mediator/sockets')(cluster.worker.id, config, r);
-  var Emitter = new require('./mediator/aemitter')();
-  var Ether = require('./realm/ether')(Sockets, Emitter, config, r);
+
+  // "Mediates" the various communications between client/server and plugins.
+  var mediator = {
+    // Direct client/server communications
+    sockets: require('./mediator/sockets')(cluster.worker.id, config, r),
+    // Triggers listening events
+    emitter: new require('./mediator/aemitter')(),
+    // Call ("request") data from plugin functions (that may or may not exist).
+    requester: new require('./mediator/arequester')()
+  };
+  var Ether = require('./realm/ether')(mediator, r, config);
 
   app.set('view engine', 'html');
   app.engine('html', require('hbs').__express);
@@ -55,7 +63,7 @@ module.exports = function(cluster, config){
   });
 
   // Connects the web sockets server to the http server.
-  Sockets.begin(server);
+  mediator.sockets.begin(server);
 
   // Start the HTTP server
   logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.http.port);

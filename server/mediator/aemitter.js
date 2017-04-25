@@ -7,12 +7,14 @@
 module.exports = (function(){
   Promise = require('bluebird');
 
+
   /**
    * Creates an asyncronous emitter object.
    * @constructor
    */
   function aemitter(){
     var EVENTS = {};
+    var FUNCS = {};
 
     /**
      * Adds a listener function callback to the event given by name.
@@ -108,7 +110,7 @@ module.exports = (function(){
      *
      * @method emit
      * @param {string} name - The name of the event.
-     * @param {... *} * - Any number of additional arguments to be passed to the listeners.
+     * @param {...*} * - Any number of additional arguments to be passed to the listeners.
      * @returns {Promise}
      */
     this.emit = function(){
@@ -135,6 +137,15 @@ module.exports = (function(){
       }
       return Promise.resolve(); // Either no event name was given, or the given event name has no listeners.
     };
+    /**
+     * Shorthand for the emit() method.
+     *
+     * @method e
+     * @param {string} name - The name of the event.
+     * @param {...*} * - Any number of additional arguments to be passed to the listeners.
+     * @returns {Promise}
+     */
+    this.e = this.emit;
   }
   aemitter.prototype.constructor = aemitter;
 

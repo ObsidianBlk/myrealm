@@ -157,6 +157,7 @@ module.exports = function(workerid, config, r){
 	  Sockets.connection(client);
 	});
       }
+      return Sockets;
     },
 
     
@@ -165,9 +166,9 @@ module.exports = function(workerid, config, r){
      *
      * @method handler
      * @param {string} name - Name of the message command this handler works with.
-     * @param {... middleware} - Zero or more middleware callbacks used to process the message.
+     * @param {...middleware} - Zero or more middleware callbacks used to process the message.
      * @param {function} callback - Callback function called after all middleware has completed.
-     * @returns {this}
+     * @returns {Sockets}
      */
     handler:function(){
       var args = Array.prototype.slice.call(arguments, 0);
@@ -205,7 +206,7 @@ module.exports = function(workerid, config, r){
 	middleware: mw,
 	callback: args[args.length -1]
       };
-      return this;
+      return Sockets;
     },
 
     /**
@@ -213,7 +214,7 @@ module.exports = function(workerid, config, r){
      *
      * @method startHandler
      * @param {string} name - Name of the message command this handler works with.
-     * @returns {this}
+     * @returns {Sockets}
      */
     startHandler:function(name){
       if (OpenMessageHandler !== null){
@@ -224,7 +225,7 @@ module.exports = function(workerid, config, r){
 	callback: null
       };
       OpenMessageHandler = name;
-      return this;
+      return Sockets;
     },
 
     /**
@@ -234,7 +235,7 @@ module.exports = function(workerid, config, r){
      *
      * @method use
      * @param {function} fn - Middleware callback function to include in handler.
-     * @returns {this}
+     * @returns {Sockets}
      */
     use:function(fn){
       if (OpenMessageHandler === null){
@@ -249,7 +250,7 @@ module.exports = function(workerid, config, r){
 	MESSAGE[OpenMessageHandler].middleware = [];
       }
       MESSAGE[OpenMessageHandler].middleware.push(fn);
-      return this;
+      return Sockets;
     },
 
     /**
@@ -258,7 +259,7 @@ module.exports = function(workerid, config, r){
      *
      * @method finishHandler
      * @param {string} name - Name of the message command this handler works with.
-     * @returns {this}
+     * @returns {Sockets}
      */
     finishHandler:function(cb){
       if (OpenMessageHandler === null){
@@ -279,7 +280,7 @@ module.exports = function(workerid, config, r){
       }
       // Store the callback
       MESSAGE[OpenMessageHandler].callback = cb;
-      return this;
+      return Sockets;
     },
 
 
@@ -289,7 +290,7 @@ module.exports = function(workerid, config, r){
      *
      * @method connection
      * @param {socket} client - New client socket connection.
-     * @returns {this}
+     * @returns {Sockets}
      */
     connection:function(client){
       var co = {
@@ -320,6 +321,7 @@ module.exports = function(workerid, config, r){
       });
 
       logSocket.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
+      return Sockets;
     },
 
 
@@ -331,7 +333,7 @@ module.exports = function(workerid, config, r){
      * @param {string} id - The id of the client socket to send to.
      * @param {object} msg - Object to send to the client (as a JSON string)
      * @param {boolean} [immediate=false] - If true, message will be sent immediately instead of being buffered.
-     * @returns {this}
+     * @returns {Sockets}
      */
     send:function(id, msg, immediate){
       immediate = (immediate === true);
@@ -353,6 +355,7 @@ module.exports = function(workerid, config, r){
       } else {
 	logSocket.error("[WORKER %d] No client with ID '%s'.", workerid, id);
       }
+      return Sockets;
     },
 
     /**
@@ -365,7 +368,7 @@ module.exports = function(workerid, config, r){
      * @param {object} msg - Object to send to the clients (as a JSON string)
      * @param {string} [sender=null] - ID of the sending client.
      * @param {string[]} [receivers=null] - Array of client id strings to send message to.
-     * @returns {this}
+     * @returns {Sockets}
      */
     broadcast: function(msg, sender, receivers){
       sender = (typeof(sender) !== 'string') ? null : sender;
@@ -378,7 +381,8 @@ module.exports = function(workerid, config, r){
 	sender: sender,
 	receivers: receivers
       };
-      r.pub.set(broadcastKey, JSON.stringify(bdat));      
+      r.pub.set(broadcastKey, JSON.stringify(bdat));
+      return Sockets;
     }
   };
 
@@ -398,7 +402,7 @@ module.exports = function(workerid, config, r){
     if (!err){
       ctx.send();
     } else {
-      logEther.error("[WORKER %d] %s", workerid, err);
+      logSocket.error("[WORKER %d] %s", workerid, err);
     }
   });
 
