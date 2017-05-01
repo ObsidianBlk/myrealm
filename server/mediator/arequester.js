@@ -179,8 +179,8 @@ module.exports = (function(){
 	  });
 	}
       }
-      // Namespace not given or did not lead to a function call. Return empty promise.
-      return Promise.resolve();
+      // Namespace not given or did not lead to a function call. Return a rejected promise.
+      return Promise.reject(new Error("Request index or namespace not defined."));
     };
     /**
      * Shorthand for the request() method.
@@ -191,6 +191,47 @@ module.exports = (function(){
      * @returns {Promise}
      */
     this.r = this.request;
+
+    /**
+     * Returns a wrapper function around the request() method with the given namespace. The wrapper will return a promise in the same manner
+     * as the request() method, however, there is no need to include the request namespace when calling the wrapper.
+     *
+     * @method requestFunc
+     * @param {...*} * - Any number of arguments to be passed to the wrapped request.
+     * @returns {function}
+     */
+    this.requestFunc = function(namespace){
+      var nstype = typeof(namespace);
+      if (nstype !== 'number' && nstype !== 'string'){
+	throw new TypeError("Given namespace value is not a valid type.");
+      }
+      if (nstype === 'number' && namespace < 0){
+	throw new Error("Given namespace index is invalid. Value must be greater than zero");
+      }
+
+      return function(){
+	var index = NSToFuncIndex(namespace);
+	if (index >= 0 && index < FUNCS.length){
+	  var fn = FUNCS[index].func;
+	  var owner = FUNCS[index].owner;
+	  var args = (arguments.length > 0) ? Array.prototype.slice.call(arguments, 1) : [namespace];
+	  return new Promise(function(resolve, reject){
+	    resolve(fn.apply(owner, args));
+	  });
+	}
+	// Namespace not given or did not lead to a function call. Return a rejected promise.
+	return Promise.reject(new Error("Request index or namespace not defined."));
+      };
+    };
+
+    /**
+     * Shorthand for the requestFunc() method.
+     *
+     * @method rf
+     * @param {...*} * - Any number of arguments to be passed to the wrapped request.
+     * @returns {function}
+     */
+    this.rf = this.requestFunc;
   }
   arequester.prototype.constructor = arequester;
 
