@@ -201,20 +201,33 @@ module.exports = (function(){
      * @returns {function}
      */
     this.requestFunc = function(namespace){
-      var nstype = typeof(namespace);
-      if (nstype !== 'number' && nstype !== 'string'){
+      // Make sure namespace is valid.
+      if (typeof(namespace) !== 'number' && typeof(namespace) !== 'string'){
 	throw new TypeError("Given namespace value is not a valid type.");
       }
-      if (nstype === 'number' && namespace < 0){
+      if (typeof(namespace) === 'number' && namespace < 0){
 	throw new Error("Given namespace index is invalid. Value must be greater than zero");
       }
+      // Set some hidden "globals" for the wrapper.
+      var fn = null;
+      var owner = null;
+
+      var checkfunc = function(){
+        if (fn === null){
+	  var index = NSToFuncIndex(namespace);
+          if (index >= 0 && index < FUNCS.length){
+	    fn = FUNCS[index].func;
+	    owner = FUNCS[index].owner;
+            checkfunc = function(){return true;}; // <-- NOTE: This callback clears !itself! once the proper function/owner is found!
+            return true;
+          }
+        }
+        return false;
+      };
 
       return function(){
-	var index = NSToFuncIndex(namespace);
-	if (index >= 0 && index < FUNCS.length){
-	  var fn = FUNCS[index].func;
-	  var owner = FUNCS[index].owner;
-	  var args = (arguments.length > 0) ? Array.prototype.slice.call(arguments, 1) : [namespace];
+	if (checkfunc() === true){
+	  var args = (arguments.length > 0) ? Array.prototype.slice.call(arguments, 0) : [namespace];
 	  return new Promise(function(resolve, reject){
 	    resolve(fn.apply(owner, args));
 	  });

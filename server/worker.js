@@ -33,11 +33,11 @@ module.exports = function(cluster, config){
     // Direct client/server communications
     sockets: require('./mediator/sockets')(cluster.worker.id, config, r),
     // Triggers listening events
-    emitter: new require('./mediator/aemitter')(),
+    emitter: new (require('./mediator/aemitter'))(),
     // Call ("request") data from plugin functions (that may or may not exist).
-    requester: new require('./mediator/arequester')()
+    requester: new (require('./mediator/arequester'))()
   };
-  var Ether = require('./realm/ether')(mediator, r, config);
+  require('./realm/ether')(mediator, r, config);
 
   app.set('view engine', 'html');
   app.engine('html', require('hbs').__express);
