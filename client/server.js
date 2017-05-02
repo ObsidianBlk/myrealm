@@ -20,7 +20,7 @@ module.exports = function(emitter, host, options){
   var server = {
     send: function(name, payload){
       var request = {
-	req:name
+	type:name
       };
       if (typeof(payload) !== 'undefined' && payload !== null){
 	request.data = payload;

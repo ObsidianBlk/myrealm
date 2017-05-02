@@ -7,7 +7,7 @@
  * @author Bryan Miller <bmiller1008@gmail.com>
  * @copyright Bryan Miller 2017
  */
-module.exports = function(workerid, config, r){
+module.exports = function(workerid, emitter, r, config){
   var Promise = require('bluebird');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
@@ -23,7 +23,7 @@ module.exports = function(workerid, config, r){
 
   var clientBufferTransmitRate = (1/60)*1000;
 
-  var broadcastKey = r.Key("INTERNAL", "BROADCAST");
+  var broadcastKey = r.Key("__INTERNAL_@0_", "BROADCAST");
   r.sub.on(broadcastKey, function(channel, message){
     var broadcast = JSON.parse(message);
     ProcessBroadcast(broadcast.message, broadcast.sender, broadcast.receiver);
@@ -80,8 +80,8 @@ module.exports = function(workerid, config, r){
       }
     }
     
-    if ("req" in msg){
-      var rname = msg["req"];
+    if ("type" in msg){
+      var rname = msg["type"];
       if (rname in MESSAGE){
 	var ctx = CreateContext(co, msg, {
 	  broadcast: Sockets.broadcast,
@@ -90,6 +90,8 @@ module.exports = function(workerid, config, r){
 	    if (co.id !== null){
 	      logSocket.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
 	      CLIENT[co.id] = co;
+	      // Tell any plugins that a client with the given id has "connected"
+	      emitter.emit("client_connect", co.id);
 	    }
 	  } : null
 	});
@@ -142,6 +144,8 @@ module.exports = function(workerid, config, r){
       delete CLIENT[id];
       logSocket.info("[WORKER %d] <Client '%s'> connection cleaned.", workerid, id);
     }, 5000*60);
+    // Tell any plugin that a client with the given id has been "disconnected"
+    emitter.emit("client_disconnected", id);
   }
   
 
@@ -322,6 +326,18 @@ module.exports = function(workerid, config, r){
 
       logSocket.info("[WORKER %d] New, unvalidated, Client connected.", workerid);
       return Sockets;
+    },
+
+
+    /**
+     * Returns true if the given id is a client.
+     *
+     * @method isClient
+     * @param {string} id - The id to check for
+     * @returns {boolean}
+     */
+    isClient:function(id){
+      return (id in CLIENT);
     },
 
 

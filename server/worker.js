@@ -30,15 +30,20 @@ module.exports = function(cluster, config){
 
   // "Mediates" the various communications between client/server and plugins.
   var mediator = {
-    // Direct client/server communications
-    sockets: require('./mediator/sockets')(cluster.worker.id, config, r),
     // Triggers listening events
     emitter: new (require('./mediator/aemitter'))(),
     // Call ("request") data from plugin functions (that may or may not exist).
     requester: new (require('./mediator/arequester'))()
   };
+  // Direct client/server communications
+  mediator.sockets = require('./mediator/sockets')(cluster.worker.id, mediator.emitter, r, config);
+
+  // Loading the Plugins...
+  // TODO: Break the hardcoding...
   require('./realm/ether')(mediator, r, config);
 
+
+  // Configure the View Engine to use handlebar templates.
   app.set('view engine', 'html');
   app.engine('html', require('hbs').__express);
   
