@@ -24,7 +24,7 @@ module.exports = function(config, r){
 	    }
 	  } else {
 	    r.pub.hmset(key, {
-	      username: "USER_" + id,
+	      username: "VISITOR_" + id,
 	      validated: false
 	    }, function(err){
 	      if (err){
@@ -44,7 +44,7 @@ module.exports = function(config, r){
     r.pub.hmget([rkey, "token", "username"]).then(function(values){
       var token = values[0];
       var username = values[1];
-      ctx.response.cmd = ctx.request.req;
+      ctx.response.type = ctx.request.type;
       
       if (token === ctx.request.token){
 	// Check to see if the token has expired yet.
@@ -82,7 +82,7 @@ module.exports = function(config, r){
       }
     }).catch(function(e){
       log.debug("%o", e);
-      ctx.response.cmd = ctx.request.req;
+      ctx.response.type = ctx.request.type;
       ctx.error("Failed to find token for id.");
       next();
     });
@@ -90,7 +90,7 @@ module.exports = function(config, r){
 
 
   function HandleNewConnection(ctx, next){
-    ctx.response.cmd = ctx.request.req;
+    ctx.response.type = ctx.request.type;
     log.debug("Generating a new connection");
     GenerateVisitorID(10).then(function(id){
       log.debug("New Connection ID '%s'", id);
@@ -127,7 +127,7 @@ module.exports = function(config, r){
 	if (typeof(ctx.request.data) !== 'undefined'){
 	  HandleReconnection(ctx, next);
 	} else {
-	  ctx.response.cmd = ctx.request.req;
+	  ctx.response.type = ctx.request.type;
 	  ctx.error("Request contains token, but no data.");
 	  next();
 	}

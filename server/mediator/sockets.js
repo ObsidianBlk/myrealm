@@ -91,7 +91,7 @@ module.exports = function(workerid, emitter, r, config){
 	      logSocket.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
 	      CLIENT[co.id] = co;
 	      // Tell any plugins that a client with the given id has "connected"
-	      emitter.emit("client_connect", co.id);
+	      emitter.emit("client_connected", co.id);
 	    }
 	  } : null
 	});

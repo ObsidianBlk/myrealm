@@ -71,9 +71,8 @@ module.exports = function(emitter, host, options){
 	return;
       }
       
-      if ("cmd" in msg){
-	var cname = msg["cmd"];
-	emitter.emit(cname, msg, server);
+      if ("type" in msg){
+	emitter.emit(msg.type, msg, server);
       }
     };
   }
@@ -86,7 +85,10 @@ module.exports = function(emitter, host, options){
       user_data = msg.data;
       currentToken = msg.token;
       console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
-      emitter.emit("connected", user_data.username);
+      emitter.emit("connected", {
+	id: user_data.id,
+	username: user_data.username
+      });
     }
   });
 
