@@ -41,6 +41,7 @@ module.exports = function(cluster, config){
   // Loading the Plugins...
   // TODO: Break the hardcoding...
   require('./realm/ether')(mediator, r, config);
+  require('./realm/visitor')(mediator, r, config);
 
 
   // Configure the View Engine to use handlebar templates.

@@ -72,17 +72,17 @@ module.exports = function(emitter, host, options){
       }
       
       if ("type" in msg){
-	emitter.emit(msg.type, msg, server);
+	emitter.emit(msg.type, msg.data, msg, server);
       }
     };
   }
 
   // Listening for "connection" status from the server.
-  emitter.on("connection", function(msg){
+  emitter.on("connection", function(data, msg){
     if (msg.status === "error"){
       console.error("CONNECTION ERROR: " + msg.message);
     } else {
-      user_data = msg.data;
+      user_data = data;
       currentToken = msg.token;
       console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
       emitter.emit("connected", {

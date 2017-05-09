@@ -114,7 +114,7 @@ module.exports = (function(){
      * @returns {Promise}
      */
     this.emit = function(){
-      if (arguments.length < 1){
+      if (arguments.length >= 1){
 	var name = arguments[0];
 	if (name in EVENTS){
 	  var args = (arguments.length > 1) ? Array.prototype.slice.call(arguments, 1) : null;

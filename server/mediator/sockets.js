@@ -24,9 +24,15 @@ module.exports = function(workerid, emitter, r, config){
   var clientBufferTransmitRate = (1/60)*1000;
 
   var broadcastKey = r.Key("__INTERNAL_@0_", "BROADCAST");
-  r.sub.on(broadcastKey, function(channel, message){
-    var broadcast = JSON.parse(message);
-    ProcessBroadcast(broadcast.message, broadcast.sender, broadcast.receiver);
+  r.sub.subscribe(broadcastKey);
+  r.sub.on("message", function(channel, message){
+    switch (channel){
+    case broadcastKey:
+      logSocket.debug("[WORKER %d] Redis broadcast message!", workerid);
+      var broadcast = JSON.parse(message);
+      ProcessBroadcast(broadcast.message, broadcast.sender, broadcast.receivers);
+      break;
+    }
   });
   r.sub.subscribe(broadcastKey);
   
@@ -116,14 +122,14 @@ module.exports = function(workerid, emitter, r, config){
   function ProcessBroadcast(msg, sender, receivers){
     // Using a promise so as to handle this async. Not returning a value, though, so no then() statement.
     new Promise(function(resolve, reject){
-      if (receivers.length > 0){
+      if (receivers !== null && receivers.length > 0){
 	receivers.forEach(function(rID){
 	  if ((rID in CLIENT) && rID !== sender){
 	    Sockets.send(rID, msg);
 	  }
 	});
       } else { // If there are no specific receivers, send to EVERYONE (except the sender).
-	Object.Keys(CLIENT).forEach(function(cID){
+	Object.keys(CLIENT).forEach(function(cID){
 	  if (cID !== sender){
 	    Sockets.send(cID, msg);
 	  }
@@ -388,7 +394,7 @@ module.exports = function(workerid, emitter, r, config){
      */
     broadcast: function(msg, sender, receivers){
       sender = (typeof(sender) !== 'string') ? null : sender;
-      if (typeof(receivers) !== 'undefined' && receivers !== null && receivers.constructor.name !== Array.name){
+      if (typeof(receivers) === 'undefined' || receivers === null || receivers.constructor.name === Array.name){
 	receivers = [];
       }
       
@@ -397,7 +403,7 @@ module.exports = function(workerid, emitter, r, config){
 	sender: sender,
 	receivers: receivers
       };
-      r.pub.set(broadcastKey, JSON.stringify(bdat));
+      r.pub.publish(broadcastKey, JSON.stringify(bdat));
       return Sockets;
     }
   };

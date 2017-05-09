@@ -31,8 +31,8 @@ module.exports = function(co, request, d){
   var tokenData = null;
 
   if (co.id !== null){
-    ctx.broadcast = function(receivers){
-      broadcast(ctx.response, co.id, receivers);
+    ctx.broadcast = function(includeSender, receivers){
+      broadcast(ctx.response, (includeSender === false) ? null : co.id, receivers);
     };
 
     ctx.send = function(){

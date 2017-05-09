@@ -11,9 +11,9 @@ module.exports = function(m, r, config){
 
   // [[number, number, number, number], ...]
   // [[Center_x, Center_y (foot level), Center_z, radius], ...]
-  var SPAWN_ZONES = {
+  var SPAWN_ZONES = [
     [0.0, 0.0, 0.0, 30]
-  };
+  ];
 
   // ----------------------------------------------------------------------
   // Work Functions
@@ -30,7 +30,7 @@ module.exports = function(m, r, config){
     return result;
   }
 
-  function dupObjectProperties(obj, plist){
+  /*function dupObjectProperties(obj, plist){
     var no = null;
     plist.forEach(function(p){
       if (obj.hasOwnProperty(p[0]) && typeof(obj[p[0]]) === p[1]){
@@ -39,11 +39,11 @@ module.exports = function(m, r, config){
       }
     });
     return no;
-  }
+  }*/
 
 
   function RandomSpawnPosition(){
-    var zone = Math.floor((Math.random()*SPAWN_ZONES.length)+0.5);
+    var zone = Math.floor(Math.random()*SPAWN_ZONES.length);
     var r = Math.random()*SPAWN_ZONES[zone][3];
     var angle = Math.random()*(2*Math.PI);
     return {
@@ -59,12 +59,12 @@ module.exports = function(m, r, config){
       var kTelemetry = r.Key(NS_TELEMETRY, id);
       r.pub.ttl(kTelemetry).then(function(res){
 	if (res === -1){ // No Expiration
-	  r.pub.hmgetall(kTelemetry).then(function(result){
+	  r.pub.hgetall(kTelemetry).then(function(result){
 	    resolve(result);
 	  }).error(function(err){reject(err);});
 	} else if (res >= 0){ // There is an upcoming expiration
 	  r.pub.persist(kTelemetry).then(function(){ // Clear expiration
-	    r.pub.hmgetall(kTelemetry).then(function(result){ // Get and return telemetry data.
+	    r.pub.hgetall(kTelemetry).then(function(result){ // Get and return telemetry data.
 	      resolve(result);
 	    }).error(function(err){reject(err);});
 	  });
@@ -77,15 +77,34 @@ module.exports = function(m, r, config){
 
   function setTelemetry(id, data){
     return new Promise(function(resolve, reject){
-      var tdat = dupObjectProperties(data, [
-	["position_x", "number"],
-	["position_y", "number"],
-	["position_z", "number"]
-	/* TODO: Handle angle properties as well! */
-      ]);
+      var tdat = (function(){
+	var o = {};
+	if (typeof(data.position_x) === 'number' || typeof(data.position_x) === 'string'){
+	  o.position_x = Number(data.position_x);
+	}
+	if (typeof(data.position_y) === 'number' || typeof(data.position_y) === 'string'){
+	  o.position_y = Number(data.position_y);
+	}
+	if (typeof(data.position_z) === 'number' || typeof(data.position_z) === 'string'){
+	  o.position_z = Number(data.position_z);
+	}
+
+	if (typeof(data.rotation_x) === 'number' || typeof(data.rotation_x) === 'string'){
+	  o.rotation_x = Number(data.rotation_x);
+	}
+	if (typeof(data.rotation_y) === 'number' || typeof(data.rotation_y) === 'string'){
+	  o.rotation_y = Number(data.rotation_y);
+	}
+	if (typeof(data.rotation_z) === 'number' || typeof(data.rotation_z) === 'string'){
+	  o.rotation_z = Number(data.rotation_z);
+	}
+	
+	return o;
+      })();
       if (tdat !== null){
 	var kTelemetry = r.Key(NS_TELEMETRY, id);
 	// Check if the telemetry for the given id is set to expire.
+	console.log(tdat);
 	r.pub.ttl(kTelemetry).then(function(ret){
 	  if (ret === -1){ // If it's going to expire, remove the expiration, then set the key...
 	    r.pub.persist(kTelemetry).then(function(){
@@ -119,15 +138,16 @@ module.exports = function(m, r, config){
 	var data = ctx.request.data;
 	// TODO: Need validation tests on data!!!
 	// TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
-	result.position_x += data.dpos_x;
-	result.position_y += data.dpos_y;
-	result.position_z += data.dpos_z;
-	result.visitor_id = ctx.id;
+	result.position_x += data.position_dx;
+	result.position_y += data.position_dy;
+	result.position_z += data.position_dz;
 	setTelemetry(ctx.id, result).then(function(){
 	  var resp = ctx.response;
+	  result.visitor_id = ctx.id;
 	  resp.type = "telemetry";
 	  resp.data = result;
-	  ctx.broadcast(); // Want the caller AND others to receive this.
+	  log.debug("[WORKER %d] Sending positional telemetry!", workerid);
+	  ctx.broadcast(false); // Want the caller AND others to receive this.
 	  // TODO: Filter "receivers" to only those in the same layers.
 	});
       }).error(function(err){
@@ -138,18 +158,46 @@ module.exports = function(m, r, config){
     }
   });
 
+  m.sockets.handler("visitor_orientation", mwValidation, function(ctx, err){
+    // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
+    // head orientation.
+    if (!err){
+      var data = ctx.request.data;
+      setTelemetry(ctx.id, {
+	rotation_x: data.rotation_x,
+	rotation_y: data.rotation_y,
+	rotation_z: data.rotation_z
+      }).then(function(){
+	var resp = ctx.response;
+	resp.type = "telemetry";
+	resp.data = {
+	  rotation_x: data.rotation_x,
+	  rotation_y: data.rotation_y,
+	  rotation_z: data.rotation_z
+	};
+	log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
+	ctx.broadcast(); // Send to everyone EXCEPT the caller!
+      });
+    } else {
+      log.error("[WORKER %d] %s", workerid, err);
+    }
+  });
+
   // ----------------------------------------------------------------------
   // Event Handlers
   // ----------------------------------------------------------------------
   m.emitter.on("client_connected", function(id){
+    log.debug("[WORKER %d] Client Connection emitted!", workerid);
     getTelemetry(id).then(function(telemetry){
       if (telemetry === null){
 	telemetry = RandomSpawnPosition();
+	log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
       }
-      
+      console.log(telemetry);
       setTelemetry(id, telemetry).then(function(){
 	log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
 	telemetry.visitor_id = id;
+	// TODO: The "telemetry" broadcast MAY not be good enough to trigger a "new visitor" in the client. Add something more concrete?
 	m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
 	  type: "telemetry",
 	  data: telemetry

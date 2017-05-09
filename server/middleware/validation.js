@@ -28,7 +28,7 @@ module.exports = function(config, r){
 	throw new Error("Token and Client ID mismatch!");
       }
 
-      var rkey = r.Key("visitor", ctx.request.data.id);
+      var rkey = r.Key("visitor", ctx.id);
       r.pub.hget(rkey, "token").then(function(rtoken){
 	if (rtoken !== token){
 	  throw new Error("Current token does not match request token.");
