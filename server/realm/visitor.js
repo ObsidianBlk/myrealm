@@ -1,6 +1,7 @@
 
 module.exports = function(m, r, config){
   var Promise = require('bluebird');
+  var THREE = require('three');
   var Logger = require('../utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":visitor");
   var workerid = m.sockets.workerid;
@@ -8,6 +9,7 @@ module.exports = function(m, r, config){
   var mwValidation = require('../middleware/validation')(config, r);
 
   var NS_TELEMETRY = "visitor:telemetry";
+
 
   // [[number, number, number, number], ...]
   // [[Center_x, Center_y (foot level), Center_z, radius], ...]
@@ -29,17 +31,6 @@ module.exports = function(m, r, config){
     }
     return result;
   }
-
-  /*function dupObjectProperties(obj, plist){
-    var no = null;
-    plist.forEach(function(p){
-      if (obj.hasOwnProperty(p[0]) && typeof(obj[p[0]]) === p[1]){
-	if (no === null){no = {};}
-	no[p[0]] = obj[p[0]];
-      }
-    });
-    return no;
-  }*/
 
 
   function RandomSpawnPosition(){
@@ -75,36 +66,26 @@ module.exports = function(m, r, config){
     });
   }
 
+  function TelemetryDataBuilder(data, propList){
+    var o = {};
+    propList.forEach(function(prop){
+      if (data.hasOwnProperty(prop) === true && (typeof(data[prop]) === 'number' || typeof(data[prop]) === 'string')){
+	o[prop] = Number(data[prop]);
+      }
+    });
+    return o;
+  }
+
   function setTelemetry(id, data){
     return new Promise(function(resolve, reject){
-      var tdat = (function(){
-	var o = {};
-	if (typeof(data.position_x) === 'number' || typeof(data.position_x) === 'string'){
-	  o.position_x = Number(data.position_x);
-	}
-	if (typeof(data.position_y) === 'number' || typeof(data.position_y) === 'string'){
-	  o.position_y = Number(data.position_y);
-	}
-	if (typeof(data.position_z) === 'number' || typeof(data.position_z) === 'string'){
-	  o.position_z = Number(data.position_z);
-	}
-
-	if (typeof(data.rotation_x) === 'number' || typeof(data.rotation_x) === 'string'){
-	  o.rotation_x = Number(data.rotation_x);
-	}
-	if (typeof(data.rotation_y) === 'number' || typeof(data.rotation_y) === 'string'){
-	  o.rotation_y = Number(data.rotation_y);
-	}
-	if (typeof(data.rotation_z) === 'number' || typeof(data.rotation_z) === 'string'){
-	  o.rotation_z = Number(data.rotation_z);
-	}
-	
-	return o;
-      })();
+      var tdat = TelemetryDataBuilder(data, [
+	"position_x", "position_y", "position_z",
+	"rotation_x", "rotation_y", "rotation_z",
+	"facing_x", "facing_y", "facing_z"
+      ]);
       if (tdat !== null){
 	var kTelemetry = r.Key(NS_TELEMETRY, id);
 	// Check if the telemetry for the given id is set to expire.
-	console.log(tdat);
 	r.pub.ttl(kTelemetry).then(function(ret){
 	  if (ret === -1){ // If it's going to expire, remove the expiration, then set the key...
 	    r.pub.persist(kTelemetry).then(function(){
@@ -138,16 +119,16 @@ module.exports = function(m, r, config){
 	var data = ctx.request.data;
 	// TODO: Need validation tests on data!!!
 	// TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
-	result.position_x += data.position_dx;
-	result.position_y += data.position_dy;
-	result.position_z += data.position_dz;
+	result.position_x = ((result.position_x !== null) ? Number(result.position_x) : 0) +  data.position_dx;
+	result.position_y = ((result.position_y !== null) ? Number(result.position_y) : 0) +  data.position_dy;
+	result.position_z = ((result.position_z !== null) ? Number(result.position_z) : 0) +  data.position_dz;
 	setTelemetry(ctx.id, result).then(function(){
 	  var resp = ctx.response;
 	  result.visitor_id = ctx.id;
 	  resp.type = "telemetry";
 	  resp.data = result;
 	  log.debug("[WORKER %d] Sending positional telemetry!", workerid);
-	  ctx.broadcast(false); // Want the caller AND others to receive this.
+	  ctx.broadcast();
 	  // TODO: Filter "receivers" to only those in the same layers.
 	});
       }).error(function(err){
@@ -171,18 +152,29 @@ module.exports = function(m, r, config){
 	var resp = ctx.response;
 	resp.type = "telemetry";
 	resp.data = {
+	  visitor_id: ctx.id,
 	  rotation_x: data.rotation_x,
 	  rotation_y: data.rotation_y,
 	  rotation_z: data.rotation_z
 	};
 	log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
-	ctx.broadcast(); // Send to everyone EXCEPT the caller!
+	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
       });
     } else {
       log.error("[WORKER %d] %s", workerid, err);
     }
   });
 
+  // Requesting telemetry data.
+  /*m.sockets.handler("visitor_telemetry", mwValidation, function(ctx, err){
+    if (!err){
+      var data = ctx.request.data;
+      
+    } else {
+      log.error("[WORKER %d] %s", workerid, err);
+    }
+  });*/
+  
   // ----------------------------------------------------------------------
   // Event Handlers
   // ----------------------------------------------------------------------
@@ -193,14 +185,31 @@ module.exports = function(m, r, config){
 	telemetry = RandomSpawnPosition();
 	log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
       }
-      console.log(telemetry);
       setTelemetry(id, telemetry).then(function(){
 	log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
+
+	// Store this new id into the visitor list.
+	r.sadd(r.Key("visitor_list"), id).then(function(){
 	telemetry.visitor_id = id;
-	// TODO: The "telemetry" broadcast MAY not be good enough to trigger a "new visitor" in the client. Add something more concrete?
-	m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
-	  type: "telemetry",
-	  data: telemetry
+	  // First, send the client their new telemetry...
+	  m.sockets.send(id, {
+	    type: "telemetry",
+	    data: { // clients only utilize position... no need to send the rest.
+	      visitor_id: id,
+	      position_x: telemetry.position_x,
+	      position_y: telemetry.position_y,
+	      position_z: telemetry.position_z
+	    }
+	  }, true);
+	  
+	  // Now... let everyone ELSE know there's a new visitor!
+	  m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
+	    type: "visitor_enter",
+	    data: {
+	      visitor_id:id,
+	      telemetry:telemetry
+	    }
+	  }, [id], true);
 	});
       });
     });
@@ -208,6 +217,7 @@ module.exports = function(m, r, config){
 
 
   m.emitter.on("client_disconnected", function(id){
+    r.srem(r.Key("visitor_list"), id);
     clearTelemetry(id, 300); // Removing telemetry in 300 seconds (5 minutes).
     m.sockets.broadcast({
       type: "visitor_exit",

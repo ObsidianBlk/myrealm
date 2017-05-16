@@ -30,7 +30,7 @@ module.exports = function(workerid, emitter, r, config){
     case broadcastKey:
       logSocket.debug("[WORKER %d] Redis broadcast message!", workerid);
       var broadcast = JSON.parse(message);
-      ProcessBroadcast(broadcast.message, broadcast.sender, broadcast.receivers);
+      ProcessBroadcast(broadcast.message, broadcast.receivers, broadcast.exclusive);
       break;
     }
   });
@@ -119,22 +119,19 @@ module.exports = function(workerid, emitter, r, config){
     }
   }
 
-  function ProcessBroadcast(msg, sender, receivers){
+  function ProcessBroadcast(msg, receivers, exclusive){
     // Using a promise so as to handle this async. Not returning a value, though, so no then() statement.
     new Promise(function(resolve, reject){
+      var clients = [];
       if (receivers !== null && receivers.length > 0){
-	receivers.forEach(function(rID){
-	  if ((rID in CLIENT) && rID !== sender){
-	    Sockets.send(rID, msg);
-	  }
-	});
-      } else { // If there are no specific receivers, send to EVERYONE (except the sender).
-	Object.keys(CLIENT).forEach(function(cID){
-	  if (cID !== sender){
-	    Sockets.send(cID, msg);
-	  }
-	});
+	clients = (exclusive === true) ? Object.keys(CLIENT).filter(function(v){return receivers.indexOf(v) < 0;}) : receivers;
+      } else {
+	clients = Object.keys(CLIENT);
       }
+      
+      clients.forEach(function(cID){
+	Sockets.send(cID, msg);
+      });
       resolve(); // Do I need to use this, since I'm not returning a value?
     });
   }
@@ -388,20 +385,19 @@ module.exports = function(workerid, emitter, r, config){
      *
      * @method broadcast
      * @param {object} msg - Object to send to the clients (as a JSON string)
-     * @param {string} [sender=null] - ID of the sending client.
      * @param {string[]} [receivers=null] - Array of client id strings to send message to.
+     * @param {boolean} [exclusive=false] - If true, the receivers list becomes a list of clients to EXCLUDE from the broadcast.
      * @returns {Sockets}
      */
-    broadcast: function(msg, sender, receivers){
-      sender = (typeof(sender) !== 'string') ? null : sender;
-      if (typeof(receivers) === 'undefined' || receivers === null || receivers.constructor.name === Array.name){
+    broadcast: function(msg, receivers, exclusive){
+      if (!(receivers instanceof Array)){
 	receivers = [];
       }
       
       var bdat = {
 	message: msg,
-	sender: sender,
-	receivers: receivers
+	receivers: receivers,
+	exclusive: (exclusive === true)
       };
       r.pub.publish(broadcastKey, JSON.stringify(bdat));
       return Sockets;

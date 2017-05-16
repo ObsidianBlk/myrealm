@@ -4,6 +4,16 @@ if (typeof(window.REALM) === 'undefined'){
 }
 
 (function(REALM){
+  var SCENE = (function(){
+    var scene = null;
+    return function(){
+      if (scene === null){
+	var s = document.getElementsByTagName("a-scene");
+	scene = (s.length > 0) ? s[0] : null;
+      }
+      return scene;
+    };
+  })();
   var ME = null;
   
   REALM.Emitter.on("connected", function(data){
@@ -12,9 +22,43 @@ if (typeof(window.REALM) === 'undefined'){
     me_el.setAttribute("vcam", "username:" + ME.username + ";v_id:" + ME.id + "");
   });
 
-  REALM.Emitter.on("visitor_exit", function(data){
+  REALM.Emitter.on("visitor_enter", function(data){
+    console.log("VISITOR ENTERED!");
+    var t = data.telemetry;
+    var scene = SCENE();
 
+    var el = document.createElement("a-entity");
+    el.setAttribute("id", data.visitor_id);
+    scene.appendChild(el);
+    
+    var el_head = document.createElement("a-entity");
+    el_head.setAttribute("class", "visitor_head");
+    el.appendChild(el_head);
+    //el_head.setAttribute("rotation", t.facing_x + " " + t.facing_y + " " + t.facing_z);
+    el_head.setAttribute("geometry", "primitive: box; width: 1; height: 1; depth: 1");
+    el_head.setAttribute("material", "color:blue");
+
+    var el_body = document.createElement("a-entity");
+    el_body.setAttribute("class", "visitor_body");
+    el.appendChild(el_body);
+    //el_body.setAttribute("rotation", t.rotation_x + " " + t.rotation_y + " " + t.rotation_z);
+    el_body.setAttribute("geometry", "primitive: box; width: 0.5; height: 1.1; depth: 0.5");
+    el_body.setAttribute("material", "color:blue");
+    
+    el.setAttribute("visitor", "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id);
+    el.setAttribute("position", t.position_x + " " + t.position_y + " " + t.position_z);
   });
+
+  REALM.Emitter.on("visitor_exit", function(data){
+    var el = document.querySelector("#" + data.visitor_id);
+    if (el !== null){
+      var eParent = el.parentElement;
+      if (eParent !== null){
+	eParent.removeChild(el);
+      }
+    }
+  });
+  
 
   // -----------------------------------------------------------------------
   // A-Frame component for visitors!
@@ -25,24 +69,58 @@ if (typeof(window.REALM) === 'undefined'){
     },
 
     init:function(){
+      var userHeight = 1.6;
+      var visitor = (function(el){
+	var v = {};
+	var head = null;
+	var body = null;
+	Object.defineProperties(v, {
+	  "head":{
+	    enumerable: true,
+	    get:function(){
+	      if (head === null){
+		var h = el.getElementsByClassName("visitor_head");
+		head = (h.length > 0) ? h[0] : null;
+		if (head !== null){
+		  head.setAttribute("position", "y", userHeight);
+		}
+	      }
+	      return head;
+	    }
+	  },
+
+	  "body":{
+	    enumerable: true,
+	    get:function(){
+	      if (body === null){
+		var b = el.getElementsByClassName("visitor_body");
+		body = (b.length > 0) ? b[0] : null;
+	      }
+	      return body;
+	    }
+	  }
+	});
+	return v;
+      })(this.el);
+
       this.__HANDLER_Telemetry = (function(t){
 	if (t.visitor_id === this.data.v_id){
-	  var camera = this.el.getAttribute("camera");
-	  camera = (camera) ? camera : {userHeight: 1.6};
-
+	  console.log("Updating telemetry for " + t.visitor_id);
 	  var telemetry = {};
+	  var head = visitor.head;
+	  var body = visitor.body;
 	  if (typeof(t.position_x) === 'number' && typeof(t.position_y) === 'number' && typeof(t.position_z) === 'number'){
 	    telemetry.x = t.position_x;
-	    telemetry.y = t.position_y + camera.userHeight;
+	    telemetry.y = t.position_y;
 	    telemetry.z = t.position_z;
 	    this.el.setAttribute("position", telemetry);
 	  }
 
-	  if (typeof(t.rotation_x) === 'number' && typeof(t.rotation_y) === 'number' && typeof(t.rotation_z) === 'number'){
+	  if (head !== null && typeof(t.rotation_x) === 'number' && typeof(t.rotation_y) === 'number' && typeof(t.rotation_z) === 'number'){
 	    telemetry.x = t.rotation_x;
 	    telemetry.y = t.rotation_y;
 	    telemetry.z = t.rotation_z;
-	    this.el.setAttribute("rotation", telemetry);
+	    head.setAttribute("rotation", telemetry);
 	  }
 	}
       }).bind(this);
@@ -51,27 +129,87 @@ if (typeof(window.REALM) === 'undefined'){
     }
   });
 
+
+
   
   // -----------------------------------------------------------------------
   // A-Frame component for the user!
   REALM.AFRAME.registerComponent("vcam", {
     schema:{
       v_id:{default: "000"},
-      username:{default:"visitor"}
+      username:{default:"visitor"},
+      mindelta:{default:0.1}
+    },
+
+    getUserHeight:function(){
+      var camera = this.el.getAttribute("camera");
+      return (camera) ? camera.userHeight : 0;
+    },
+
+    setTelemetry:function(x, y, z, clean){
+      this._telemetry.currpos.x = ((typeof(x) === 'number' || typeof(x) === 'string') ? Number(x) : 0);
+      this._telemetry.currpos.y = ((typeof(y) === 'number' || typeof(y) === 'string') ? Number(y) : 0);
+      this._telemetry.currpos.z = ((typeof(z) === 'number' || typeof(z) === 'string') ? Number(z) : 0);
+      if (clean === true){
+	this.cleanTelemetry();
+      }
+    },
+
+    getTelemetry:function(includeUserHeight){
+      var userheight = (includeUserHeight === true) ? (function(el){
+	var camera = el.getAttribute("camera");
+	return (camera) ? camera.userHeight : 0;
+      })(this.el) : 0;
+
+      return {
+	x: this._telemetry.currpos.x,
+	y: this._telemetry.currpos.y + userheight,
+	z: this._telemetry.currpos.z
+      };
+    },
+
+    getTelemetryDelta:function(clean){
+      var d = {
+	position_dx: this._telemetry.currpos.x - this._telemetry.lastpos.x,
+	position_dy: this._telemetry.currpos.y - this._telemetry.lastpos.y,
+	position_dz: this._telemetry.currpos.z - this._telemetry.lastpos.z
+      };
+      if (clean === true){
+	this.cleanTelemetry();
+      }
+      return d;
+    },
+
+    cleanTelemetry:function(){
+      this._telemetry.lastpos.x = this._telemetry.currpos.x;
+      this._telemetry.lastpos.y = this._telemetry.currpos.y;
+      this._telemetry.lastpos.z = this._telemetry.currpos.z;
+    },
+
+    telemetryDirty:function(){
+      return (this._telemetry.lastpos.x !== this._telemetry.currpos.x ||
+	      this._telemetry.lastpos.y !== this._telemetry.currpos.y ||
+	      this._telemetry.lastpos.z !== this._telemetry.currpos.z);
     },
 
     init:function(){
-      this.__LastTelemetry = {x:0.0, y:0.0, z:0.0};
+      this._delta = 0.0;
+      this._telemetry = {
+	lastpos:{x:0.0, y:0.0, z:0.0},
+	currpos:{x:0.0, y:0.0, z:0.0}
+      };
+      (function(self){
+	var pos = self.el.getAttribute("position");
+	self.setTelemetry(pos.x, pos.y - self.getUserHeight(), pos.z, true);
+      })(this);
+
+      var ignorePositionChange = false;
       this.__HANDLER_Telemetry = (function(t){
 	if (t.visitor_id === this.data.v_id){
-	  var camera = this.el.getAttribute("camera");
-	  camera = (camera) ? camera : {userHeight: 1.6};
 
-	  this.__LastTelemetry.x = t.position_x;
-	  this.__LastTelemetry.y = t.position_y + camera.userHeight;
-	  this.__LastTelemetry.z = t.position_z;
-	  
-	  this.el.setAttribute("position", this.__LastTelemetry);
+	  this.setTelemetry(t.position_x, t.position_y, t.position_z, true);
+	  ignorePositionChange = true;
+	  this.el.setAttribute("position", this.getTelemetry(true));
 	}
       }).bind(this);
       
@@ -81,27 +219,36 @@ if (typeof(window.REALM) === 'undefined'){
 	var ndata = evt.detail.newData;
 	switch(evt.detail.name){
 	case 'position':
-	  if (this.__LastTelemetry !== null &&
-	      (ndata.x !== this.__LastTelemetry.x || ndata.y !== this.__LastTelemetry.y || ndata.z !== this.__LastTelemetry.z)){
-	    var odata = evt.detail.oldData;
-	    var delta = {
-	      position_dx: ndata.x - odata.x,
-	      position_dy: ndata.y - odata.y,
-	      position_dz: ndata.z - odata.z
-	    };
-	    REALM.Server.send("visitor_move", delta);
+	  if (ignorePositionChange === false){
+	    this.setTelemetry(ndata.x, ndata.y - this.getUserHeight(), ndata.z);
 	  }
+	  ignorePositionChange = false;
 	  break;
 	case 'rotation':
-	  REALM.Server.send("visitor_orientation", {
-	    rotation_x: ndata.x,
-	    rotation_y: ndata.y,
-	    rotation_z: ndata.z
-	  });
+	  this.__RotDirty = true;
 	  break;
 	}
-	console.log(evt);
       }).bind(this));
+    },
+
+    tick:function(timestamp, delta){
+      this._delta += (delta/1000); // Storing delta in seconds.
+      if (this._delta >= this.data.mindelta){
+	this._delta %= this.data.mindelta;
+	if (this.telemetryDirty() === true){
+	  var pdelta = this.getTelemetryDelta(true);
+	  REALM.Server.send("visitor_move", pdelta);
+	}
+	if (this.__RotDirty === true){
+	  var rot = this.el.getAttribute("rotation");
+	  REALM.Server.send("visitor_orientation", {
+	    rotation_x: rot.x,
+	    rotation_y: rot.y,
+	    rotation_z: rot.z
+	  });
+	  this.__RotDirty = false;
+	}
+      }
     },
 
     update:function(oldData){
