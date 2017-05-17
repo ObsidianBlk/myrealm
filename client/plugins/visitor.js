@@ -20,33 +20,36 @@ if (typeof(window.REALM) === 'undefined'){
     var me_el = document.querySelector("#me");
     ME = data;
     me_el.setAttribute("vcam", "username:" + ME.username + ";v_id:" + ME.id + "");
+    REALM.Server.send("visitor_list"); // Request a list of already connected visitors. (results will come in as "visitor_enter" events).
   });
 
   REALM.Emitter.on("visitor_enter", function(data){
-    console.log("VISITOR ENTERED!");
     var t = data.telemetry;
     var scene = SCENE();
 
-    var el = document.createElement("a-entity");
-    el.setAttribute("id", data.visitor_id);
-    scene.appendChild(el);
-    
-    var el_head = document.createElement("a-entity");
-    el_head.setAttribute("class", "visitor_head");
-    el.appendChild(el_head);
-    //el_head.setAttribute("rotation", t.facing_x + " " + t.facing_y + " " + t.facing_z);
-    el_head.setAttribute("geometry", "primitive: box; width: 1; height: 1; depth: 1");
-    el_head.setAttribute("material", "color:blue");
+    var el = document.querySelector("#" + data.visitor_id);
+    if (el === null){ // Don't re-add a visitor already being tracked.
+      el = document.createElement("a-entity");
+      el.setAttribute("id", data.visitor_id);
+      scene.appendChild(el);
+      
+      var el_head = document.createElement("a-entity");
+      el_head.setAttribute("class", "visitor_head");
+      el.appendChild(el_head);
+      //el_head.setAttribute("rotation", t.facing_x + " " + t.facing_y + " " + t.facing_z);
+      el_head.setAttribute("geometry", "primitive: box; width: 1; height: 1; depth: 1");
+      el_head.setAttribute("material", "color:blue");
 
-    var el_body = document.createElement("a-entity");
-    el_body.setAttribute("class", "visitor_body");
-    el.appendChild(el_body);
-    //el_body.setAttribute("rotation", t.rotation_x + " " + t.rotation_y + " " + t.rotation_z);
-    el_body.setAttribute("geometry", "primitive: box; width: 0.5; height: 1.1; depth: 0.5");
-    el_body.setAttribute("material", "color:blue");
-    
-    el.setAttribute("visitor", "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id);
-    el.setAttribute("position", t.position_x + " " + t.position_y + " " + t.position_z);
+      var el_body = document.createElement("a-entity");
+      el_body.setAttribute("class", "visitor_body");
+      el.appendChild(el_body);
+      //el_body.setAttribute("rotation", t.rotation_x + " " + t.rotation_y + " " + t.rotation_z);
+      el_body.setAttribute("geometry", "primitive: box; width: 0.5; height: 1.1; depth: 0.5");
+      el_body.setAttribute("material", "color:blue");
+      
+      el.setAttribute("visitor", "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id);
+      el.setAttribute("position", t.position_x + " " + t.position_y + " " + t.position_z);
+    }
   });
 
   REALM.Emitter.on("visitor_exit", function(data){

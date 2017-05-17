@@ -65,7 +65,8 @@ module.exports = function(workerid, emitter, r, config){
       co.buffer = [];
       logSocket.debug("[WORKER %d] Sending buffered commands to client '%s'.", workerid, co.id);
       co.client.send(JSON.stringify({
-	cmds:buff
+	type:"multi",
+        data:buff
       }));
     }
 

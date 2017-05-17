@@ -109,6 +109,33 @@ module.exports = function(m, r, config){
       r.pub.del(kTelemetry);
     }
   }
+
+  function getVisitorListAndTelemetry(){
+    return new Promise(function(resolve, reject){
+      r.pub.smembers(r.Key("visitor_list")).then(function(results){ // Get the list of visitors from redis.
+        var promlist = [];
+        // For each id...
+        results.forEach(function(id, i, a){
+          // ... create a promise ...
+          var p = new Promise(function(res, rej){
+            // ... that obtains the telemetry for each user id ...
+            getTelemetry(id).then(function(t){
+              // ... Alter the result array entry to conform to a message format with visitor_id and telemetry ...
+              a[i] = {visitor_id:id, telemetry:t};
+              res();
+            }).error(function(e){rej(e);});
+          });
+          promlist.push(p);
+        });
+        // ... wait for all the promises to finish ...
+        Promise.all(promlist).then(function(){
+          resolve(results); // ... and send the result list to resolve the main promise.
+        }).error(function(e){
+          reject(e); // ... or die trying, damn-it!
+        });
+      });
+    });
+  }
   
   // ----------------------------------------------------------------------
   // Direct Socket Client Request!
@@ -165,15 +192,20 @@ module.exports = function(m, r, config){
     }
   });
 
-  // Requesting telemetry data.
-  /*m.sockets.handler("visitor_telemetry", mwValidation, function(ctx, err){
+  // List and Telemetry of existing visitors!
+  m.sockets.handler("visitor_list", mwValidation, function(ctx, err){
     if (!err){
-      var data = ctx.request.data;
-      
+      getVisitorListAndTelemetry().then(function(result){
+        result.forEach(function(msg){
+          if (msg.visitor_id !== ctx.id){
+            m.sockets.send(ctx.id, {type:"visitor_enter", data:msg});
+          }
+        });
+      });
     } else {
       log.error("[WORKER %d] %s", workerid, err);
     }
-  });*/
+  });
   
   // ----------------------------------------------------------------------
   // Event Handlers
@@ -189,7 +221,7 @@ module.exports = function(m, r, config){
 	log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
 
 	// Store this new id into the visitor list.
-	r.sadd(r.Key("visitor_list"), id).then(function(){
+	r.pub.sadd(r.Key("visitor_list"), id).then(function(){
 	telemetry.visitor_id = id;
 	  // First, send the client their new telemetry...
 	  m.sockets.send(id, {
@@ -217,7 +249,7 @@ module.exports = function(m, r, config){
 
 
   m.emitter.on("client_disconnected", function(id){
-    r.srem(r.Key("visitor_list"), id);
+    r.pub.srem(r.Key("visitor_list"), id);
     clearTelemetry(id, 300); // Removing telemetry in 300 seconds (5 minutes).
     m.sockets.broadcast({
       type: "visitor_exit",
