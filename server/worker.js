@@ -49,10 +49,29 @@ module.exports = function(cluster, config){
   app.engine('html', require('hbs').__express);
   
   // Configuring server paths
-  app.get('/', function(req, res){
+  config.realms.forEach(function(realm){
+    var template_file = (realm.subrealm === "") ? "index" : realm.subrealm;
+    var context = null;
+    try {
+      context = (realm.context) ? realm.context : require(realm.context_path);
+    } catch (e) {
+      // TODO: Should I cancel boot?
+      console.error("Failed to load Sub-Realm context '" + realm.context_path + "'");
+      context = {};
+    }
+    // Attach the bundle scripts, if any are defined, to the context.
+    if (realm.bundle_scripts){
+      context.bundle_scripts = realm.bundle_scripts;
+    }
+    
+    app.get('/'+realm.subrealm, function(req, res){
+      res.render(template_file, context);
+    });
+  });
+  /*app.get('/', function(req, res){
     res.render("index", config.site);
     //res.sendFile(path.resolve(config.http.path + 'index.html'));
-  });
+  });*/
 
   // serves all the static files
   app.get(/^(.+)$/, function(req, res){

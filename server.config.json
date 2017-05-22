@@ -1,5 +1,4 @@
 {
-  "version":"1.0.0",
   "processes":0,
   "logDomain":"myrealm",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
@@ -12,9 +11,18 @@
     "port":3000,
     "path":"www/"
   },
-  "site":{
-    "title":"MyRealm Site",
-    "description":"MyRealm VR Multiuser Environment."
-  }
+  "realms":[
+    {
+      "subrealm":"",
+      "context":{
+        "title":"MyRealm Demonstration",
+        "description":"MyRealm VS Multi-User Environment."
+      },
+      "bundle_scripts":[
+        "vendor-bundle.js",
+        "myrealm-bundle.js"
+      ]
+    }
+  ]
 }
 

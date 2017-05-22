@@ -7,9 +7,6 @@ module.exports = (function(){
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
     "properties": {
-      "version": {
-	"type": "string"
-      },
       "processes": {
 	"type": "integer"
       },
@@ -58,29 +55,36 @@ module.exports = (function(){
 	  "path"
 	]
       },
-      "site": {
-	"type": "object",
-	"properties": {
-	  "title":{
-	    "type":"string",
-	    "minLength": 1
-	  },
-	  "description":{
-	    "type": "string",
-	    "minLength": 1
-	  },
-	  "plugins":{
-	    "type": "array",
-	    "items": {
-	      "type": "string"
-	    },
-	    "uniqueItems": true
-	  }
-	},
-	"required": [
-	  "title",
-	  "description"
-	]
+      "realms":{
+        "type": "array",
+        "minItems":1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "subrealm": {
+              "type": "string"
+            },
+            "context": {
+              "type": "object"
+            },
+            "context_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bundle_scripts":{
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {"required":["subrealm"]},
+            {"required":["subrealm", "context"]},
+            {"required":["subrealm", "context_path"]}
+          ]
+        }
       },
       "logging": {
 	"type": "object",
@@ -95,10 +99,10 @@ module.exports = (function(){
       }
     },
     "required": [
-      "version",
       "secret",
       "redis",
-      "http"
+      "http",
+      "realms"
     ]
   };
 
@@ -131,10 +135,15 @@ module.exports = (function(){
       http:{
 	port:3000
       },
-      site:{
-	title:"MyRealm VR",
-	description:"MyRealm VR Multiuser Environment."
-      },
+      realms:[
+        {
+          subrealm:"",
+          context:{
+            title: "MyRealm VR",
+            description: "MyRealm VR Multiuser Environment."
+          }
+        }
+      ],
       logging:{
 	minLevel:"debug",
 	maxLevel:"error"
@@ -154,15 +163,17 @@ module.exports = (function(){
     config.redis.serverkey = "";
   }
 
-  // --
-  // Setting up the bundle scripts to include in the index template.
-
-  config.site.bundle_scripts = [
-    "vendor-bundle.js",
-    "myrealm-bundle.js"
-  ];
-
-  // --
+  // Need to check the realms list to make sure the root sub-realm ("") actually exists!
+  var rootRealmFound = false;
+  for (var i=0; i < config.realms.length; i++){
+    if (config.realms[i].subrealm === ""){
+      rootRealmFound = true;
+      break;
+    }
+  }
+  if (rootRealmFound === false){
+    console.error("WARNING: Required root sub-realm not defined!");
+  }
 
   return config;
 })();
