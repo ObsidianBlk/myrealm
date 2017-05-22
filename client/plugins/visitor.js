@@ -27,6 +27,9 @@ if (typeof(window.REALM) === 'undefined'){
     var t = data.telemetry;
     var scene = SCENE();
 
+    console.log("NEW VISITOR!");
+    console.log(data);
+
     var el = document.querySelector("#" + data.visitor_id);
     if (el === null){ // Don't re-add a visitor already being tracked.
       el = document.createElement("a-entity");

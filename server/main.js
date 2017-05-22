@@ -1,5 +1,6 @@
 
 
+var version = require('./version');
 var config = require("./config");
 var cluster = require('cluster');
 
@@ -7,6 +8,13 @@ if (cluster.isMaster){
   var Logger = require('./utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":master");
   var numCPUs = require('os').cpus().length;
+
+  version('.').then(function(ver){
+    console.log("------------------------------------------");
+    console.log("MyRealm Multi-User VR Web Server.");
+    console.log("Version: " + ver);
+    console.log("------------------------------------------");
+  });
 
   if (config.processes <= 0){
     config.processes = numCPUs;

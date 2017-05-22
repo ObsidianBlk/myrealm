@@ -154,7 +154,7 @@ module.exports = function(m, r, config){
 	  result.visitor_id = ctx.id;
 	  resp.type = "telemetry";
 	  resp.data = result;
-	  log.debug("[WORKER %d] Sending positional telemetry!", workerid);
+	  //log.debug("[WORKER %d] Sending positional telemetry!", workerid);
 	  ctx.broadcast();
 	  // TODO: Filter "receivers" to only those in the same layers.
 	});
@@ -184,7 +184,7 @@ module.exports = function(m, r, config){
 	  rotation_y: data.rotation_y,
 	  rotation_z: data.rotation_z
 	};
-	log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
+	//log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
 	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
       });
     } else {
@@ -198,6 +198,7 @@ module.exports = function(m, r, config){
       getVisitorListAndTelemetry().then(function(result){
         result.forEach(function(msg){
           if (msg.visitor_id !== ctx.id){
+	    log.debug("[WORKER %d] Sending Visitor Enter Data %o", workerid, msg);
             m.sockets.send(ctx.id, {type:"visitor_enter", data:msg});
           }
         });
