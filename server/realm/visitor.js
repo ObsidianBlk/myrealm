@@ -45,11 +45,12 @@ module.exports = function(m, r, config){
   }
   
 
-  function getTelemetry(id){
+  function getTelemetry(id, persist){
+    persist = (persist === true);
     return new Promise(function(resolve, reject){
       var kTelemetry = r.Key(NS_TELEMETRY, id);
       r.pub.ttl(kTelemetry).then(function(res){
-	if (res === -1){ // No Expiration
+	if (res === -1 || (res > 0 && persist === false)){ // No Expiration or, get the data while we can.
 	  r.pub.hgetall(kTelemetry).then(function(result){
 	    resolve(result);
 	  }).error(function(err){reject(err);});
@@ -76,7 +77,8 @@ module.exports = function(m, r, config){
     return o;
   }
 
-  function setTelemetry(id, data){
+  function setTelemetry(id, data, persist){
+    persist = (persist === true);
     return new Promise(function(resolve, reject){
       var tdat = TelemetryDataBuilder(data, [
 	"position_x", "position_y", "position_z",
@@ -87,12 +89,12 @@ module.exports = function(m, r, config){
 	var kTelemetry = r.Key(NS_TELEMETRY, id);
 	// Check if the telemetry for the given id is set to expire.
 	r.pub.ttl(kTelemetry).then(function(ret){
-	  if (ret === -1){ // If it's going to expire, remove the expiration, then set the key...
+	  if (ret === -1 || (ret >= 0 && persist === false)){ // It's not set to expire, or we don't want to stop expiration, so just set the key.
+	    resolve(r.pub.hmset(kTelemetry, tdat));
+	  } else { // It's going to expire, remove the expiration, then set the key...
 	    r.pub.persist(kTelemetry).then(function(){
 	      resolve(r.pub.hmset(kTelemetry, tdat));
 	    });
-	  } else { // Otherwise just set the key.
-	    resolve(r.pub.hmset(kTelemetry, tdat));
 	  }
 	});
       } else {
@@ -143,21 +145,29 @@ module.exports = function(m, r, config){
   m.sockets.handler("visitor_move", mwValidation, function(ctx, err){
     if (!err){
       getTelemetry(ctx.id).then(function(result){
-	var data = ctx.request.data;
-	// TODO: Need validation tests on data!!!
-	// TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
-	result.position_x = ((result.position_x !== null) ? Number(result.position_x) : 0) +  data.position_dx;
-	result.position_y = ((result.position_y !== null) ? Number(result.position_y) : 0) +  data.position_dy;
-	result.position_z = ((result.position_z !== null) ? Number(result.position_z) : 0) +  data.position_dz;
-	setTelemetry(ctx.id, result).then(function(){
-	  var resp = ctx.response;
-	  result.visitor_id = ctx.id;
-	  resp.type = "telemetry";
-	  resp.data = result;
-	  //log.debug("[WORKER %d] Sending positional telemetry!", workerid);
-	  ctx.broadcast();
-	  // TODO: Filter "receivers" to only those in the same layers.
-	});
+	var data = TelemetryDataBuilder(ctx.request.data, [
+	  "position_dx", "position_dy", "position_dz"
+	]);
+	if (data.hasOwnProperty("position_dx") === false ||
+	    data.hasOwnProperty("position_dy") === false ||
+	    data.hasOwnProperty("position_dz") === false){
+	  ctx.error("Some or all positional deltas missing.");
+	  ctx.send();
+	} else {
+	  // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
+	  result.position_x = ((result.position_x !== null) ? Number(result.position_x) : 0) +  data.position_dx;
+	  result.position_y = ((result.position_y !== null) ? Number(result.position_y) : 0) +  data.position_dy;
+	  result.position_z = ((result.position_z !== null) ? Number(result.position_z) : 0) +  data.position_dz;
+	  setTelemetry(ctx.id, result).then(function(){
+	    var resp = ctx.response;
+	    result.visitor_id = ctx.id;
+	    resp.type = "telemetry";
+	    resp.data = result;
+	    //log.debug("[WORKER %d] Sending positional telemetry!", workerid);
+	    ctx.broadcast();
+	    // TODO: Filter "receivers" to only those in the same layers.
+	  });
+	}
       }).error(function(err){
 	log.error("[WORKER %d] %s", workerid, err);
       });
@@ -213,38 +223,43 @@ module.exports = function(m, r, config){
   // ----------------------------------------------------------------------
   m.emitter.on("client_connected", function(id){
     log.debug("[WORKER %d] Client Connection emitted!", workerid);
-    getTelemetry(id).then(function(telemetry){
-      if (telemetry === null){
-	telemetry = RandomSpawnPosition();
-	log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
-      }
-      setTelemetry(id, telemetry).then(function(){
-	log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
-
-	// Store this new id into the visitor list.
-	r.pub.sadd(r.Key("visitor_list"), id).then(function(){
+    var EmitNewConnection = function(telemetry){
+      // Store this new id into the visitor list.
+      r.pub.sadd(r.Key("visitor_list"), id).then(function(){
 	telemetry.visitor_id = id;
-	  // First, send the client their new telemetry...
-	  m.sockets.send(id, {
-	    type: "telemetry",
-	    data: { // clients only utilize position... no need to send the rest.
-	      visitor_id: id,
-	      position_x: telemetry.position_x,
-	      position_y: telemetry.position_y,
-	      position_z: telemetry.position_z
-	    }
-	  }, true);
-	  
-	  // Now... let everyone ELSE know there's a new visitor!
-	  m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
-	    type: "visitor_enter",
-	    data: {
-	      visitor_id:id,
-	      telemetry:telemetry
-	    }
-	  }, [id], true);
-	});
+	// First, send the client their new telemetry...
+	m.sockets.send(id, {
+	  type: "telemetry",
+	  data: { // clients only utilize position... no need to send the rest.
+	    visitor_id: id,
+	    position_x: telemetry.position_x,
+	    position_y: telemetry.position_y,
+	    position_z: telemetry.position_z
+	  }
+	}, true);
+	
+	// Now... let everyone ELSE know there's a new visitor!
+	m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
+	  type: "visitor_enter",
+	  data: {
+	    visitor_id:id,
+	    telemetry:telemetry
+	  }
+	}, [id], true);
       });
+    };
+    
+    getTelemetry(id, true).then(function(telemetry){ // Pass true to persist the data if it's set to expire.
+      if (telemetry === null){ // No preexisting telemetry...
+	telemetry = RandomSpawnPosition(); // Get random position...
+	log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
+	setTelemetry(id, telemetry).then(function(){ // Store position into telemetry store for id...
+	  log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
+	  EmitNewConnection(telemetry); // Send message that new visitor is here!
+	});
+      } else { // This id had existing telemetry. No need to restore it so...
+	EmitNewConnection(telemetry); // Send message that "new" visitor is here!
+      }
     });
   });
 

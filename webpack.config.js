@@ -1,6 +1,15 @@
+var server_conf = require('./server.config.json');
 var webpack = require('webpack');
 var path = require('path');
 
+var www = (function(){
+  if (server_conf.http){
+    if (server_conf.http.path){
+      return server_conf.http.path;
+    }
+  }
+  return "www";
+})();
 
 module.exports = {
   entry: {
@@ -8,7 +17,7 @@ module.exports = {
   },
   output: {
     filename: '[name]-bundle.js',
-    path: path.resolve(__dirname, 'www')
+    path: path.resolve(__dirname, www)
   },
   plugins: [
     new webpack.optimize.CommonsChunkPlugin({

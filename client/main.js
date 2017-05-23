@@ -77,4 +77,4 @@ window.REALM = (function(){
   return obj;
 })();
 
-require('./plugins/visitor');
+require('./modules/visitor');
