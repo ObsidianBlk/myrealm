@@ -180,20 +180,15 @@ module.exports = function(m, r, config){
     // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
     // head orientation.
     if (!err){
-      var data = ctx.request.data;
-      setTelemetry(ctx.id, {
-	rotation_x: data.rotation_x,
-	rotation_y: data.rotation_y,
-	rotation_z: data.rotation_z
-      }).then(function(){
+      var data = TelemetryDataBuilder(ctx.request.data, [
+	"rotation_x", "rotation_y", "rotation_z",
+	"facing_x", "facing_y", "facing_z"
+      ]);
+      setTelemetry(ctx.id, data).then(function(){
 	var resp = ctx.response;
 	resp.type = "telemetry";
-	resp.data = {
-	  visitor_id: ctx.id,
-	  rotation_x: data.rotation_x,
-	  rotation_y: data.rotation_y,
-	  rotation_z: data.rotation_z
-	};
+	data.visitor_id = ctx.id;
+	resp.data = data;
 	//log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
 	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
       });

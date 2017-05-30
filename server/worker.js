@@ -45,8 +45,36 @@ module.exports = function(cluster, config){
 
 
   // Configure the View Engine to use handlebar templates.
+  var hbs = require('hbs');
   app.set('view engine', 'html');
-  app.engine('html', require('hbs').__express);
+  app.set('views', path.resolve((typeof(config.http.views) === 'string') ? config.http.views : 'views'));
+  app.engine('html', hbs.__express);
+
+  // Loading template partials... if any.
+  if (config.partials instanceof Array){
+    var basePath = path.resolve((typeof(config.http.partials) === 'string') ? config.http.partials : 'views/partials');
+    config.partials.forEach(function(partial){
+      var ppath = path.join(basePath, '_' + partial + ".html");
+      try {
+	if (fs.statSync(ppath).isFile() === false){
+	  ppath = null;
+	}
+      } catch (e) {
+	logWorker.debug("[WORKER %d] %s", cluster.worker.id, e.message);
+	ppath = null;
+      }
+      if (ppath !== null){
+	logWorker.debug("%s | %s", partial, ppath);
+	hbs.registerPartial(partial, fs.readFileSync(ppath, 'utf8'));
+      } else {
+	logWorker.warning(
+	  "[WORKER %d] Cannot load partial. Path '%s' is not a file.",
+	  cluster.worker.id,
+	  path.join(basePath, '_' + partial + ".html")
+	);
+      }
+    });
+  }
   
   // Configuring server paths
   config.realms.forEach(function(realm){
@@ -68,15 +96,11 @@ module.exports = function(cluster, config){
       res.render(template_file, context);
     });
   });
-  /*app.get('/', function(req, res){
-    res.render("index", config.site);
-    //res.sendFile(path.resolve(config.http.path + 'index.html'));
-  });*/
 
   // serves all the static files
   app.get(/^(.+)$/, function(req, res){
     logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
-    var resourcePath = path.resolve(config.http.path + req.params[0]);
+    var resourcePath = path.resolve(((typeof(config.http.www) === 'string') ? config.http.www : "")  + req.params[0]);
     fs.exists(resourcePath, function(exists){
       if (exists){
 	res.sendFile(resourcePath);

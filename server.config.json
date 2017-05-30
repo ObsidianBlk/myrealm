@@ -9,8 +9,13 @@
   },
   "http":{
     "port":3000,
-    "path":"www/"
+    "www":"www",
+    "views":"views",
+    "partials":"views/partials"
   },
+  "partials":[
+    "visitors"
+  ],
   "realms":[
     {
       "subrealm":"",

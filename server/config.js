@@ -45,14 +45,21 @@ module.exports = (function(){
           "port": {
             "type": "integer"
           },
-	  "path":{
+	  "www":{
+	    "type": "string",
+	    "minLength": 1
+	  },
+	  "views":{
+	    "type": "string",
+	    "minLength": 1
+	  },
+	  "partials":{
 	    "type": "string",
 	    "minLength": 1
 	  }
 	},
 	"required": [
-          "port",
-	  "path"
+          "port"
 	]
       },
       "realms":{
