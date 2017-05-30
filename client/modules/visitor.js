@@ -173,30 +173,12 @@ if (typeof(window.REALM) === 'undefined'){
     schema:{
       v_id:{default: "000"},
       username:{default:"visitor"},
-      mindelta:{default:0.1},
-      cameraClass:{default: "camera"}
+      mindelta:{default:0.1}
     },
 
-    getCameraElement:(function(){
-      var camera = null;
-      return function(){
-	if (camera === null){
-	  var c = this.el.getElementsByClassName(this.data.cameraClass);
-	  if (c.length > 0){
-	    camera = c[0];
-	  }
-	}
-	return camera;
-      };
-    })(),
-
     getCameraComponent:function(){
-      var cam_el = this.getCameraElement();
-      if (cam_el !== null){
-	var camera = cam_el.getAttribute("camera");
-	return (camera) ? camera : null;
-      }
-      return null;
+      var camera = this.el.getAttribute("camera");
+      return (camera) ? camera : null;
     },
 
     getUserHeight:function(){
@@ -214,11 +196,9 @@ if (typeof(window.REALM) === 'undefined'){
     },
 
     getTelemetry:function(includeUserHeight){
-      var userheight = (includeUserHeight === true) ? this.getUserHeight() : 0;
-
       return {
 	x: this._telemetry.currpos.x,
-	y: this._telemetry.currpos.y + userheight,
+	y: this._telemetry.currpos.y,
 	z: this._telemetry.currpos.z
       };
     },
@@ -247,10 +227,17 @@ if (typeof(window.REALM) === 'undefined'){
 	      this._telemetry.lastpos.z !== this._telemetry.currpos.z);
     },
 
+    angleYFromBody:function(fy){
+      var brot = this._body.getAttribute("rotation");
+      fy = (fy % 180) + 180;
+      brot.y = (brot.y % 180) + 180;
+      return ((fy - brot.y) - 180) % 180;
+    },
+
     init:function(){
       this.__RotDirty = false;
       this.__FacingDirty = false;
-      this._delta = 0.0;
+      this._timeDelta = 0;
       this._telemetry = {
 	lastpos:{x:0.0, y:0.0, z:0.0},
 	currpos:{x:0.0, y:0.0, z:0.0}
@@ -260,13 +247,16 @@ if (typeof(window.REALM) === 'undefined'){
 	var pos = self.el.getAttribute("position");
 	self.setTelemetry(pos.x, pos.y, pos.z, true);
 
-	// Appending the "visitor body" to the user :)
+	// Appending the "visitor body" to the scene :)
+        var scene = SCENE();
 	var d = document.createElement("div");
 	d.innerHTML = VISITOR_TEMPL.body;
-	var children = Array.prototype.slice.call(d.children);
-	children.forEach(function(n){
-	  self.el.appendChild(n);
-	});
+        if (d.children.length !== 1){
+          throw new Error("Template contains incorrect number of children! Expected 1.");
+        }
+        d.children[0].setAttribute("id", self.data.v_id + "_BODY");
+        self._body = d.children[0];
+	scene.appendChild(self._body);
       })(this);
 
       var ignorePositionChange = false;
@@ -275,51 +265,61 @@ if (typeof(window.REALM) === 'undefined'){
 
 	  this.setTelemetry(t.position_x, t.position_y, t.position_z, true);
 	  ignorePositionChange = true;
-	  this.el.setAttribute("position", this.getTelemetry());
+          var tel = this.getTelemetry();
+          this._body.setAttribute("position", tel);
+          tel.y += this.getUserHeight();
+	  this.el.setAttribute("position", tel);
 	}
       }).bind(this);      
       REALM.Emitter.on("telemetry", this.__HANDLER_Telemetry);
 
-      var cam_el = this.getCameraElement();
-      cam_el.addEventListener('componentchanged', (function (evt) {
-	if (evt.detail.name === "rotation"){
-	  var ndata = evt.detail.newData;
-	  var drot = 0;
-	  if (ndata.y > 160){
-	    drot = ndata.y - 160;
-	  } else if (ndata.y < -160) {
-	    drot = ndata.y + 160;
-	  }
-	  this.__FacingDirty = true;
-	  if (drot !== 0){
-	    var rot = this.el.getAttribute("rotation");
-	    rot.y += drot;
-	    cam_el.setAttribute("rotation", {
-	      x: ndata.x,
-	      y: ndata.y - drot,
-	      z: ndata.z
-	    });
-	    this.el.setAttribute("rotation", rot);
-	    this.__RotDirty = true;
-	  }
-	}
-      }).bind(this));
-
       this.el.addEventListener('componentchanged', (function (evt) {
-	if (evt.detail.name === "position"){
-	  var ndata = evt.detail.newData;
-	  if (ignorePositionChange === false){
-	    this.setTelemetry(ndata.x, ndata.y, ndata.z);
+        var ndata = evt.detail.newData;
+        switch (evt.detail.name) {
+        case "position":
+          if (ignorePositionChange === false){
+	    this.setTelemetry(ndata.x, ndata.y - this.getUserHeight(), ndata.z);
+            this._body.setAttribute("position", {x:ndata.x, y:ndata.y-this.getUserHeight(), z:ndata.z});
 	  }
 	  ignorePositionChange = false;
-	}
+          break;
+	case "rotation":
+          var dof = 80.0; // Degree of freedom +/- at which to turn the body.
+          var odata = evt.detail.oldData;
+          var fdelta = (function(){
+            var v = new REALM.THREE.Vector3(
+              ndata.x - odata.x,
+              ndata.y - odata.y,
+              ndata.z - odata.z
+            );
+            return v.length();
+          })();
+
+          if (fdelta > 0.25){
+	    this.__FacingDirty = true;
+
+            var afb = this.angleYFromBody(ndata.y);
+	    if (Math.abs(afb) > dof){
+              var rot = this._body.getAttribute("rotation");
+	      rot.y += ((afb > 0) ? afb - dof : afb + dof);
+              if (rot.y > 180){
+                rot.y = (rot.y - 360);
+              } else if (rot.y < -180){
+                rot.y = (rot.y + 360);
+              }
+	      this._body.setAttribute("rotation", rot);
+	      this.__RotDirty = true;
+	    }
+	  }
+          break;
+        }
       }).bind(this));
     },
 
     tick:function(timestamp, delta){
-      this._delta += (delta/1000); // Storing delta in seconds.
-      if (this._delta >= this.data.mindelta){
-	this._delta %= this.data.mindelta;
+      this._timeDelta += (delta/1000); // Storing delta in seconds.
+      if (this._timeDelta >= this.data.mindelta){
+	this._timeDelta %= this.data.mindelta;
 	if (this.telemetryDirty() === true){
 	  var pdelta = this.getTelemetryDelta(true);
 	  REALM.Server.send("visitor_move", pdelta);
@@ -327,7 +327,7 @@ if (typeof(window.REALM) === 'undefined'){
 	if (this.__RotDirty === true || this.__FacingDirty === true){
 	  var orientation = {};
 	  if (this.__RotDirty === true){
-	    var rot = this.el.getAttribute("rotation");
+	    var rot = this._body.getAttribute("rotation");
 	    orientation.rotation_x = rot.x;
 	    orientation.rotation_y = rot.y;
 	    orientation.rotation_z = rot.z;
@@ -335,8 +335,7 @@ if (typeof(window.REALM) === 'undefined'){
 	  }
 
 	  if (this.__FacingDirty === true){
-	    var cam_el = this.getCameraElement();
-	    var facing = cam_el.getAttribute("rotation");
+	    var facing = this.el.getAttribute("rotation");
 	    orientation.facing_x = facing.x;
 	    orientation.facing_y = facing.y;
 	    orientation.facing_z = facing.z;
