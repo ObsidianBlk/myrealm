@@ -229,14 +229,13 @@ if (typeof(window.REALM) === 'undefined'){
 
     angleYFromBody:function(fy){
       var brot = this._body.getAttribute("rotation");
-      fy = (fy % 180) + 180;
-      brot.y = (brot.y % 180) + 180;
-      return ((fy - brot.y) - 180) % 180;
+      return fy - brot.y;
     },
 
     init:function(){
       this.__RotDirty = false;
       this.__FacingDirty = false;
+      this.__FacingOld = null;
       this._timeDelta = 0;
       this._telemetry = {
 	lastpos:{x:0.0, y:0.0, z:0.0},
@@ -280,33 +279,41 @@ if (typeof(window.REALM) === 'undefined'){
           if (ignorePositionChange === false){
 	    this.setTelemetry(ndata.x, ndata.y - this.getUserHeight(), ndata.z);
             this._body.setAttribute("position", {x:ndata.x, y:ndata.y-this.getUserHeight(), z:ndata.z});
+
+	    // Set the body Y rotation to match the head Y rotation if moving.
+	    var hrot = this.el.getAttribute("rotation");
+	    var brot = this._body.getAttribute("rotation");
+	    brot.y = hrot.y;
+	    this._body.setAttribute("rotation", brot);
+	    this.__RotDirty = true;
 	  }
 	  ignorePositionChange = false;
           break;
 	case "rotation":
           var dof = 80.0; // Degree of freedom +/- at which to turn the body.
-          var odata = evt.detail.oldData;
-          var fdelta = (function(){
+	  if (this.__FacingOld === null){
+	    this.__FacingOld = {x:0, y:0, z:0};
+	  }
+          var fdelta = (function(odata){
             var v = new REALM.THREE.Vector3(
               ndata.x - odata.x,
               ndata.y - odata.y,
               ndata.z - odata.z
             );
             return v.length();
-          })();
+          })(this.__FacingOld);
 
           if (fdelta > 0.25){
+	    this.__FacingOld = ndata;
 	    this.__FacingDirty = true;
 
-            var afb = this.angleYFromBody(ndata.y);
+	    var rot = this._body.getAttribute("rotation");
+            var afb = ndata.y - rot.y;
+
+	    console.log("Body: " + rot.x + ", " + rot.y + ", " + rot.z);
+	    console.log("Head: " + ndata.x + ", " + ndata.y + ", " + ndata.z);
 	    if (Math.abs(afb) > dof){
-              var rot = this._body.getAttribute("rotation");
 	      rot.y += ((afb > 0) ? afb - dof : afb + dof);
-              if (rot.y > 180){
-                rot.y = (rot.y - 360);
-              } else if (rot.y < -180){
-                rot.y = (rot.y + 360);
-              }
 	      this._body.setAttribute("rotation", rot);
 	      this.__RotDirty = true;
 	    }
