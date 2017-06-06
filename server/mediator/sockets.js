@@ -111,6 +111,7 @@ module.exports = function(workerid, emitter, r, config){
 	    logSocket.debug("[WORKER %d] Middleware satisfied for request '%s' on client '%s'", workerid, rname, (co.id !== null) ? co.id : "UNVALIDATED");
             cb(ctx, null);
           }).catch(function(e){
+            logSocket.debug("[WORKER %d] Middleware exception \"%s\".", workerid, e.message);
             cb(null, e);
           });
         } else {

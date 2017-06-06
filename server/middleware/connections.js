@@ -51,8 +51,10 @@ module.exports = function(config, r){
 	jwt.verify(token, config.secret, function(err, decoded){
 	  if (err){
 	    ctx.error(err.message);
+            next();
 	  } else if (decoded.id !== ctx.request.data.id){
 	    ctx.error("Request ID and token ID do not match.");
+            next();
 	  } else {
 	    r.pub.expire(rkey, 15*60 /* 15 minute expiration */).then(function(res){
 	      var data = {
@@ -100,7 +102,7 @@ module.exports = function(config, r){
 	id: ctx.co.id,
 	username: "USER_" + ctx.co.id
       };
-      var token = jwt.sign(data, config.secret, {expiresIn:15*60});
+      var token = jwt.sign(data, config.secret, {expiresIn:60/*15*60*/});
       r.pub.hset(r.Key("visitor", ctx.co.id), "token", token).then(function(){
         ctx.response.data = data;
         ctx.response.token = token;

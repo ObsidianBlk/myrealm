@@ -2,6 +2,38 @@
 module.exports = (function(){
   var Promise = require('bluebird');
 
+  function Middleware(){
+    var stack = function(ctx, next){
+      next();
+    };
+    
+    this.use = function(fn){
+      var self = this;
+      stack = (function(_stack){
+        return function(ctx, next){
+          fn.call(null, ctx, function(){
+            _stack.call(null, ctx, next);
+          });
+        };
+      })(stack);
+    };
+
+    this.exec = function(ctx){
+      return new Promise(function(resolve, reject){
+        try {
+          stack(ctx, function(){
+            resolve();
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    };
+  }
+  Middleware.prototype.constructor = Middleware;
+  return Middleware;
+
+  /*
   function compose(fnl){
     return function(context, next){
       var index = -1; // Last called function in the list.
@@ -14,20 +46,13 @@ module.exports = (function(){
           return Promise.resolve();
         }
         
-        try {
-          return new Promise(function(resolve, reject){
-            fnl[i](context, function(){
-              resolve(process(i+1));
-            });
+        return new Promise(function(resolve, reject){
+          console.log("Hello there " + index);
+          fnl[i](context, function(){
+            resolve(process(i+1));
           });
-          /*
-          return Promise.resolve(fnl[i](context, function(){
-            return process(i+1);
-          }));
-          */
-        } catch (e) {
-          return Promise.reject(e);
-        }
+          console.log("test " + index);
+        });
       }
       return process(0);
     };
@@ -51,5 +76,6 @@ module.exports = (function(){
   }
   Middleware.prototype.constructor = Middleware;
   return Middleware;
+  */
   
 })();

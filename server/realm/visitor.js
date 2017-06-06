@@ -173,6 +173,8 @@ module.exports = function(m, r, config){
       });
     } else {
       log.error("[WORKER %d] %s", workerid, err);
+      ctx.error(err.message);
+      ctx.send();
     }
   });
 
@@ -210,6 +212,8 @@ module.exports = function(m, r, config){
       });
     } else {
       log.error("[WORKER %d] %s", workerid, err);
+      ctx.error(err.message);
+      ctx.send();
     }
   });
   
