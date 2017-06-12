@@ -2,6 +2,13 @@
   "processes":0,
   "logDomain":"myrealm",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
+  "terminal":{
+    "host":"127.0.0.1",
+    "port":3010,
+    "maxConnections":2,
+    "authCode":"SUPER-SECRET-KEY-----CHANGE_ME!!!!",
+    "enabled":false
+  },
   "redis":{
     "host":"localhost",
     "port":6379,

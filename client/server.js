@@ -16,6 +16,9 @@ module.exports = function(emitter, host, options){
   var currentToken = null;
   var socket = null;
 
+  var awaitingValidation = false;
+  var requestBuffer = [];
+
   
   var server = {
     send: function(name, payload){
@@ -25,12 +28,21 @@ module.exports = function(emitter, host, options){
       if (typeof(payload) !== 'undefined' && payload !== null){
 	request.data = payload;
       }
-      if (currentToken !== null){
-	request.token = currentToken;
+      if (awaitingValidation === false){
+	if (currentToken !== null){
+	  request.token = currentToken;
+	}
+	if (socket !== null){
+	  socket.send(JSON.stringify(request));
+	}
+      } else {
+	// Store request for after revalidation completes.
+	requestBuffer.push(request);
       }
-      if (socket !== null){
-	socket.send(JSON.stringify(request));
-      }
+    },
+
+    revalidate: function(){
+
     }
   };
   Object.defineProperties(server, {
@@ -59,6 +71,7 @@ module.exports = function(emitter, host, options){
 
     socket.onopen = function (event) {
       console.log("Socket connected to server!");
+      awaitingValidation = true;
       server.send("connection", user_data);
     };
 
@@ -77,14 +90,28 @@ module.exports = function(emitter, host, options){
     };
   }
 
+  // Listening for special case message type "multi" in which the data should be an array or message objects.
+  emitter.on("multi", function(data){
+    console.log("Processing MULTI message.");
+    if (data instanceof Array){
+      data.forEach(function(item){
+	if ("type" in item){
+	  emitter.emit(item.type, item.data, item, server);
+	}
+      });
+    }
+  });
+
   // Listening for "connection" status from the server.
   emitter.on("connection", function(data, msg){
     if (msg.status === "error"){
       console.error("CONNECTION ERROR: " + msg.message);
+      emitter.emit("connection_error");
     } else {
       user_data = data;
       currentToken = msg.token;
       console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
+      awaitingValidation = false;
       emitter.emit("connected", {
 	id: user_data.id,
 	username: user_data.username

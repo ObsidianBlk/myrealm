@@ -62,7 +62,7 @@ module.exports = function(co, request, d){
       value: (co.id !== null) ? co.id : "UNVALIDATED"
     },
 
-    "token":{
+    "tokenData":{
       get:function(){return tokenData;},
       set:function(d){
 	if (d.name === Object.name){

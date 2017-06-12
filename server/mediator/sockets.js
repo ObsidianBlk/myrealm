@@ -426,5 +426,15 @@ module.exports = function(workerid, emitter, r, config){
     }
   });
 
+  Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), function(ctx, err){
+    if (!err){
+      ctx.response.type = ctx.request.type;
+      ctx.response.data = ctx.tokenData;
+      ctx.send();
+    } else {
+      logSocket.error("[WORKER %d] %s", workerid, err);
+    }
+  });
+
   return Sockets;
 };

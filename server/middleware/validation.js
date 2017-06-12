@@ -33,6 +33,8 @@ module.exports = function(config, r){
       throw new Error("Token and Client ID mismatch!");
     }
 
+    // TODO: Validate 3rd party tokens (such as Google and Facebook) before finishing validation.
+
     var rkey = r.Key("visitor", ctx.id);
     r.pub.hget(rkey, "token").then(function(rtoken){
       if (rtoken !== token){

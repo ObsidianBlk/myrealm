@@ -2,6 +2,7 @@ require("aframe");
 window.REALM = (function(){
   var host = window.document.location.host.replace(/:.*/, '');
   var port = (window.document.location.port !== "") ? parseInt(window.document.location.port) : null;
+  var config = require('./config');
   var Emitter = require('./emitter');
   var emitter = new Emitter();
 
@@ -38,7 +39,9 @@ window.REALM = (function(){
       configurable: false,
       value: require('./server')(emitter, host, {
 	port: port,
-	ssl: document.location.protocol === "https:"
+	ssl: document.location.protocol === "https:",
+	reconnectDuration: ((config.reconnectDuration) ? config.reconnectDuration : 5),
+	revalidateDuration: ((config.revalidateDuration) ? config.revalidateDuration : 720)
       })
     },
 

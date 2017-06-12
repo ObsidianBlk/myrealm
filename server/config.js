@@ -18,6 +18,38 @@ module.exports = (function(){
 	"type": "string",
 	"minLength": 4
       },
+      "tokenExpiration": {
+	"type": "integer",
+	"min": 1
+      },
+      "terminal": {
+	"type": "object",
+	"properties":{
+	  "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+	  "maxConnections": {
+	    "type": "integer",
+	    "min": 1
+	  },
+	  "authCode":{
+	    "type": "string",
+	    "minLength": 1
+	  },
+	  "enabled": {
+	    "type": "boolean"
+	  }
+	},
+	"required": [
+	  "host",
+	  "port",
+	  "maxConnections",
+	  "authCode"
+	]
+      },
       "redis": {
 	"type": "object",
 	"properties": {
@@ -127,7 +159,7 @@ module.exports = (function(){
   }
 
   if (config !== null && tv4.validate(config, CONFIG_SCHEMA) === false){
-    console.error("Server.config.json is invalid.\nUsing default configuration.");
+    console.error("Server.config.json is invalid.\"" + tv4.error.message + "\"\nUsing default configuration.");
     config = null;
   }
 
@@ -168,6 +200,14 @@ module.exports = (function(){
 
   if (typeof(config.redis.serverkey) !== 'string'){
     config.redis.serverkey = "";
+  }
+
+  if (typeof(config.terminal) === 'undefined'){
+    config.terminal = {enabled: false};
+  }
+  // I know this looks redundant, but "enabled" isn't required by the schema... so I force it to exist. What? Set defaults you say?
+  if (config.terminal.enabled !== true){
+    config.terminal.enabled = false;
   }
 
   // Need to check the realms list to make sure the root sub-realm ("") actually exists!

@@ -6,6 +6,8 @@ module.exports = function(config, r){
   var Logger = require('../utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":middleware:connections");
 
+  var tokenExpirationTime = (config.tokenExpiration) ? config.tokenExpiration : 900; // Default is 900 seconds (15 minutes)
+
 
   function GenerateVisitorID(attempts){
     return new Promise(function(resolve, reject){
@@ -56,12 +58,12 @@ module.exports = function(config, r){
 	    ctx.error("Request ID and token ID do not match.");
             next();
 	  } else {
-	    r.pub.expire(rkey, 15*60 /* 15 minute expiration */).then(function(res){
+	    r.pub.expire(rkey, tokenExpirationTime).then(function(res){
 	      var data = {
 		id: ctx.request.data.id,
 		username: username
 	      };
-	      token = jwt.sign(data, config.secret, {expiresIn:15*60});
+	      token = jwt.sign(data, config.secret, {expiresIn:tokenExpirationTime});
 	      r.pub.hset(rkey, "token", token).then(function(){
 		ctx.co.id = ctx.request.data.id;
 		ctx.response.status = "success";
@@ -102,7 +104,7 @@ module.exports = function(config, r){
 	id: ctx.co.id,
 	username: "USER_" + ctx.co.id
       };
-      var token = jwt.sign(data, config.secret, {expiresIn:60/*15*60*/});
+      var token = jwt.sign(data, config.secret, {expiresIn:tokenExpirationTime});
       r.pub.hset(r.Key("visitor", ctx.co.id), "token", token).then(function(){
         ctx.response.data = data;
         ctx.response.token = token;
