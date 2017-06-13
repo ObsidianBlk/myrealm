@@ -111,6 +111,37 @@ module.exports = function(cluster, config){
     }); 
   });
 
+
+
+  
+
+  // ---------------------------------------------------------------
+
+  var exiting = false;
+  function ExitWorker(){
+    if (exiting === false){
+      exiting = true;
+      logWorker.info("[WORKER %d] Closing client connections...", cluster.worker.id);
+      server.close(function(){
+	logWorker.info("[WORKER %d] Closed server.", cluster.worker.id);
+	process.exit(0);
+      });
+    }
+  }
+
+  
+  cluster.worker.on("message", function(msg){
+    if (exiting === false){
+      if (msg.command){
+	if (msg.command === "terminate"){
+	  ExitWorker();
+	}
+      }
+    }
+  });
+  // ---------------------------------------------------------------
+  
+
   // Connects the web sockets server to the http server.
   mediator.sockets.begin(server);
 

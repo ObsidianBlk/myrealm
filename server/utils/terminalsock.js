@@ -13,7 +13,10 @@ module.exports = function(host, port, maxConnections, authCode){
 	message: msg
       }));
       if (closeOnSend === true){
-	c.close();
+	c.end(JSON.stringify({
+	  status: "end",
+	  message: "Connection terminated."
+	}));
       }
     }
     
@@ -38,7 +41,11 @@ module.exports = function(host, port, maxConnections, authCode){
 	try {
 	  msg = JSON.parse(data);
 	} catch (e) {
-	  ErrorOut(c, "Invalid data structure... terminating connection.", true);
+	  if (connections[id].authorized === true){
+	    ErrorOut(c, "Invalid data structure... " + e.message);
+	  } else {
+	    ErrorOut(c, "Invalid data structure... terminating connection.", true);
+	  }
 	  return; // Done here
 	}
 
@@ -66,14 +73,25 @@ module.exports = function(host, port, maxConnections, authCode){
       server = null;
     });
 
+    emitter.on("close", function(c){
+      c.client.end(JSON.stringify({
+	status: "end",
+	message: "Connection closed."
+      }));
+      if (c.id in connections){
+	delete connections[c.id];
+      }
+    });
+
     emitter.on("authorize", function(c){
       if (typeof(connections[c.id]) !== 'undefined'){
 	if (c.data.code) {
 	  if (c.data.code === authCode){
 	    connections[c.id].authorized = true;
-	    c.client.send(JSON.stringify({
+	    c.client.write(JSON.stringify({
 	      status: "success"
 	    }));
+	    return;
 	  }
 	}
       }
@@ -124,6 +142,13 @@ module.exports = function(host, port, maxConnections, authCode){
       writable: false,
       configurable: false,
       value: emitter.on
+    },
+
+    "errorOut":{
+      enumerable: true,
+      writable: false,
+      configurable: false,
+      value: ErrorOut
     }
   });
 
@@ -131,7 +156,10 @@ module.exports = function(host, port, maxConnections, authCode){
     allowConnections = false;
     var keys = Object.keys(connections);
     keys.forEach(function(key){
-      connections[key].client.close();
+      connections[key].client.end(JSON.stringify({
+	status: "end",
+	message: "Connection closed by server."
+      }));
     });
     if (closeServer === true){
       server.close();

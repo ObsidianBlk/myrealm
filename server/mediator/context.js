@@ -65,7 +65,7 @@ module.exports = function(co, request, d){
     "tokenData":{
       get:function(){return tokenData;},
       set:function(d){
-	if (d.name === Object.name){
+	if (d instanceof Object){
 	  if (tokenData !== null){
 	    throw new Error("Token data can only be defined once.");
 	  }

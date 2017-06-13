@@ -417,24 +417,17 @@ module.exports = function(workerid, emitter, r, config){
   });
 
 
-  // Special client request to be handled here.
-  Sockets.handler("connection",require('../middleware/connections')(config, r), function(ctx, err){
+  function EvtHandler(ctx, err){
     if (!err){
       ctx.send();
     } else {
-      logSocket.error("[WORKER %d] %s", workerid, err);
+      ctx.error(err.message);
     }
-  });
+  }
 
-  Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), function(ctx, err){
-    if (!err){
-      ctx.response.type = ctx.request.type;
-      ctx.response.data = ctx.tokenData;
-      ctx.send();
-    } else {
-      logSocket.error("[WORKER %d] %s", workerid, err);
-    }
-  });
+  // Special client request to be handled here.
+  Sockets.handler("connection",require('../middleware/connections')(config, r), EvtHandler);
+  Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), EvtHandler);
 
   return Sockets;
 };

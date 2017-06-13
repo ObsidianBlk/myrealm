@@ -80,4 +80,5 @@ window.REALM = (function(){
   return obj;
 })();
 
+require('./modules/cmp-look-controls-override');
 require('./modules/visitor');

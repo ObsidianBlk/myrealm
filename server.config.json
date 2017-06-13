@@ -7,7 +7,7 @@
     "port":3010,
     "maxConnections":2,
     "authCode":"SUPER-SECRET-KEY-----CHANGE_ME!!!!",
-    "enabled":false
+    "enabled":true
   },
   "redis":{
     "host":"localhost",

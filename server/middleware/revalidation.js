@@ -13,8 +13,11 @@ module.exports = function(config, r){
     // before regenerating the token.
     var token = jwt.sign(ctx.tokenData, config.secret, {expiresIn:tokenExpirationTime});
     var rkey = r.Key("visitor", ctx.id);
+    ctx.response.type = ctx.request.type;
     r.pub.hset(rkey, "token", token).then(function(){
+      ctx.response.status = "success";
       ctx.response.token = token;
+      ctx.response.data = ctx.tokenData;
       log.debug("Revalidated for client '%s'", ctx.id);
       next();
     });

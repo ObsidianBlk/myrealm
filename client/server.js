@@ -29,11 +29,16 @@ module.exports = function(emitter, host, options){
 	request.data = payload;
       }
       if (awaitingValidation === false){
-	if (currentToken !== null){
-	  request.token = currentToken;
-	}
-	if (socket !== null){
-	  socket.send(JSON.stringify(request));
+	if (requestBuffer.length > 0){
+	  requestBuffer.push(request);
+	  server.flush();
+	} else {
+	  if (currentToken !== null){
+	    request.token = currentToken;
+	  }
+	  if (socket !== null){
+	    socket.send(JSON.stringify(request));
+	  }
 	}
       } else {
 	// Store request for after revalidation completes.
@@ -41,8 +46,26 @@ module.exports = function(emitter, host, options){
       }
     },
 
-    revalidate: function(){
+    // Send all of the buffered requests.
+    flush: function(){
+      if (requestBuffer.length > 0){
+	if (currentToken !== null){
+	  requestBuffer.forEach(function(req){
+	    req.token = currentToken;
+	  });
+	}
+	if (socket !== null){
+	  socket.send(JSON.stringify({
+	    cmd:"multi",
+	    data: requestBuffer.slice() // Quick copy... in case sending the data is async (I'm not sure ATM).
+	  }));
+	}
+	requestBuffer.splice(0);
+      }
+    },
 
+    revalidate: function(){
+      ;
     }
   };
   Object.defineProperties(server, {
@@ -71,8 +94,8 @@ module.exports = function(emitter, host, options){
 
     socket.onopen = function (event) {
       console.log("Socket connected to server!");
-      awaitingValidation = true;
       server.send("connection", user_data);
+      awaitingValidation = true;
     };
 
     socket.onmessage = function(event){
@@ -106,12 +129,13 @@ module.exports = function(emitter, host, options){
   emitter.on("connection", function(data, msg){
     if (msg.status === "error"){
       console.error("CONNECTION ERROR: " + msg.message);
+      awaitingValidation = false;
       emitter.emit("connection_error");
     } else {
       user_data = data;
       currentToken = msg.token;
-      console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
       awaitingValidation = false;
+      console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
       emitter.emit("connected", {
 	id: user_data.id,
 	username: user_data.username

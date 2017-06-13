@@ -12,20 +12,52 @@ if (cluster.isMaster){
   var keepWorkersAlive = true;
 
   version('.').then(function(ver){
-    console.log("------------------------------------------");
-    console.log("MyRealm Multi-User VR Web Server.");
-    console.log("Version: " + ver);
-    console.log("------------------------------------------");
+    log.info("------------------------------------------");
+    log.info("MyRealm Multi-User VR Web Server.");
+    log.info("Version: " + ver);
+    log.info("------------------------------------------");
   });
 
+  // -----------------------------------------------------------------------------
+  // Setting up administration terminal if defined.
+  // -----------------------------------------------------------------------------
   if (config.terminal.enabled === true){
+    log.info("NOTE: Terminal socket open.");
+    log.info("------------------------------------------");
     var terminal = require('./utils/terminalsock')(
       config.terminal.host,
       config.terminal.port,
       config.terminal.maxConnections,
       config.terminal.authCode
     );
+
+    terminal.on("kill", function(evt){
+      if (evt.authorized === false){
+	terminal.errorOut(evt.client, "Unauthorized", true);
+      }
+      if (typeof(evt.data.worker) === 'number'){
+	if (evt.data.worker in cluster.workers){
+	  cluster.workers[evt.data.worker].send({command:"terminate"});
+	  evt.client.write(JSON.stringify({
+	    status: "success",
+	    message: "Worker " + evt.data.worker + " has been terminated."
+	  }));
+	} else if (evt.data.worker === 0) {
+	  evt.client.write(JSON.stringify({
+	    status: "success",
+	    message: "Shutting down server."
+	  }));
+	  terminal.close();
+	  HandleClose();
+	} else {
+	  terminal.errorOut(evt.client, "No worker '" + evt.data.worker + "'.");
+	}
+      } else {
+	terminal.errorOut(evt.client, "Invalid command data.");
+      }
+    });
   }
+  // -----------------------------------------------------------------------------
   
 
   if (config.processes <= 0){
