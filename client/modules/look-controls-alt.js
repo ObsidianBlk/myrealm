@@ -195,6 +195,23 @@ All credit for the original look-controls A-Frame component goes to it's origina
           z: radToDeg(hmdEuler.z)
 	};
       }
+
+      // OBSIDIAN
+      // Modify the rotation values so that they fit within a 0 to 360 degree value.
+      rotation.x %= 360;
+      if (rotation.x < 0) {
+	rotation.x += 360.0;
+      }
+      rotation.y %= 360;
+      if (rotation.y < 0) {
+	rotation.y += 360.0;
+      }
+      rotation.z %= 360;
+      if (rotation.z < 0) {
+	rotation.z += 360.0;
+      }
+
+      // Now set!
       this.el.setAttribute('rotation', rotation);
     },
 

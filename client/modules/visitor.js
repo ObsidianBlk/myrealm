@@ -4,6 +4,7 @@ if (typeof(window.REALM) === 'undefined'){
 }
 
 (function(REALM){
+  var isMobile = REALM.AFRAME.utils.device.isMobile();
   var SCENE = (function(){
     var scene = null;
     return function(){
@@ -55,6 +56,13 @@ if (typeof(window.REALM) === 'undefined'){
     var me_el = document.querySelector("#me");
     ME = data;
     me_el.setAttribute("vcam", "username:" + ME.username + ";v_id:" + ME.id + "");
+    if (isMobile === true){
+      me_el.setAttribute("wasd-controls", "enabled:false;");
+      me_el.setAttribute("touch-move-controls", "enabled:true;");
+    } else {
+      me_el.setAttribute("wasd-controls", "enabled:true;");
+      me_el.setAttribute("touch-move-controls", "enabled:false;");
+    }
     REALM.Server.send("visitor_list"); // Request a list of already connected visitors. (results will come in as "visitor_enter" events).
   });
 
@@ -304,16 +312,31 @@ if (typeof(window.REALM) === 'undefined'){
           })(this.__FacingOld);
 
           if (fdelta > 0.25){
-	    this.__FacingOld = ndata;
 	    this.__FacingDirty = true;
 
 	    var rot = this._body.getAttribute("rotation");
             var afb = ndata.y - rot.y;
+	    // If the disparity of the body and head rotation is greater than 180 user is strattling the
+	    // the 360 - 0 rotational boundry... adjust for that.
+	    if (Math.abs(ndata.y - rot.y) > 180){
+	      if (ndata.y > rot.y){
+		afb = (ndata.y - 360) - rot.y;
+	      } else {
+		afb = (ndata.y + 360) - rot.y;
+	      }
+	    }
+	    // Now we can update the old facing value.
+	    this.__FacingOld = ndata;
 
 	    console.log("Body: " + rot.x + ", " + rot.y + ", " + rot.z);
 	    console.log("Head: " + ndata.x + ", " + ndata.y + ", " + ndata.z);
 	    if (Math.abs(afb) > dof){
 	      rot.y += ((afb > 0) ? afb - dof : afb + dof);
+	      if (rot.y < 0){
+		rot.y += 360;
+	      } else if (rot.y > 360){
+		rot.y %= 360;
+	      }
 	      this._body.setAttribute("rotation", rot);
 	      this.__RotDirty = true;
 	    }
