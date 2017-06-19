@@ -1,6 +1,6 @@
 {
   "name": "myrealm",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Server and client-side library for multiuser VR \"Home Grids\"",
   "main": "server/main.js",
   "scripts": {

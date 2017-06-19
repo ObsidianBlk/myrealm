@@ -81,4 +81,5 @@ window.REALM = (function(){
 })();
 
 require('./modules/look-controls-alt');
+require('./modules/touch-move-controls');
 require('./modules/visitor');

@@ -126,13 +126,13 @@ All credit for the original look-controls A-Frame component goes to it's origina
 
       // Mouse Events
       canvasEl.addEventListener('mousedown', this.onMouseDown, false);
-      window.addEventListener('mousemove', this.onMouseMove, false);
-      window.addEventListener('mouseup', this.releaseMouse, false);
+      canvasEl.addEventListener('mousemove', this.onMouseMove, false);
+      canvasEl.addEventListener('mouseup', this.releaseMouse, false);
 
       // Touch events
       canvasEl.addEventListener('touchstart', this.onTouchStart);
-      window.addEventListener('touchmove', this.onTouchMove);
-      window.addEventListener('touchend', this.onTouchEnd);
+      canvasEl.addEventListener('touchmove', this.onTouchMove);
+      canvasEl.addEventListener('touchend', this.onTouchEnd);
     },
 
     removeEventListeners: function () {

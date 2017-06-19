@@ -328,8 +328,8 @@ if (typeof(window.REALM) === 'undefined'){
 	    // Now we can update the old facing value.
 	    this.__FacingOld = ndata;
 
-	    console.log("Body: " + rot.x + ", " + rot.y + ", " + rot.z);
-	    console.log("Head: " + ndata.x + ", " + ndata.y + ", " + ndata.z);
+	    //console.log("Body: " + rot.x + ", " + rot.y + ", " + rot.z);
+	    //console.log("Head: " + ndata.x + ", " + ndata.y + ", " + ndata.z);
 	    if (Math.abs(afb) > dof){
 	      rot.y += ((afb > 0) ? afb - dof : afb + dof);
 	      if (rot.y < 0){
