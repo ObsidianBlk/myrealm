@@ -5,7 +5,8 @@
   "main": "server/main.js",
   "scripts": {
     "build": "webpack",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run unit-tests",
+    "unit-tests": "NODE_ENV=test ./node_modules/mocha/bin/mocha --require 'test/specs/main.spec.js'"
   },
   "keywords": [
     "VR",
@@ -31,6 +32,9 @@
     "uws": "0.13.0"
   },
   "devDependencies": {
+    "chai": "^4.0.2",
+    "mocha": "^3.4.2",
+    "sinon": "^2.3.5",
     "webpack": "2.2.1"
   }
 }
