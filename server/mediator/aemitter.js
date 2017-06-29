@@ -74,6 +74,7 @@ module.exports = (function(){
      */
     this.remove = function(name, func, owner){
       if (name in EVENTS){
+	owner = (typeof(owner) === 'undefined') ? null : owner;
 	for (var e=0; e < EVENTS[name].length; e++){
 	  if (EVENTS[name][e].func === func && EVENTS[name][e].owner === owner){
 	    EVENTS[name].splice(e, 1);
