@@ -42,6 +42,7 @@ describe("Testing server/mediator/arequester.js", function(){
 
     it("Verify defined namespaces.", function(){
       expect(requester.requestList).to.have.same.members([
+        "test",
 	"test.addVals",
 	"test.multVals",
 	"test.subVals",

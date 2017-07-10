@@ -39,9 +39,14 @@ module.exports = (function(){
       var otype = typeof({});
       var keys = Object.keys(obj);
       for (var k=0; k < keys.length; k++){
-	if (obj.hasOwnProperty(keys[k]) && typeof(obj[keys[k]]) === otype){
-	  lst.push(base + "." + keys[k]);
-	  lst.concat(Flatten(obj[keys[k]], lst[lst.length-1]));
+	if (obj.hasOwnProperty(keys[k])){
+          var type = typeof(obj[keys[k]]);
+          if (type === otype || type === 'number'){
+            lst.push(base + ((base === "") ? "" : ".") + keys[k]);
+            if (type === otype){
+	      lst = lst.concat(Flatten(obj[keys[k]], lst[lst.length-1]));
+            }
+          }
 	}
       }
       return lst;
