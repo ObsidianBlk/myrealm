@@ -22,7 +22,7 @@ module.exports = (function(){
       return new Promise(function(resolve, reject){
         try {
           stack(ctx, function(){
-            resolve();
+            resolve(ctx);
           });
         } catch (e) {
           reject(e);
