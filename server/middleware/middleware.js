@@ -3,24 +3,44 @@ module.exports = (function(){
   var Promise = require('bluebird');
 
   function Middleware(){
-    var stack = function(ctx, next){
-      next();
-    };
-    
+    var mfn = [];
+
+    function build_stack(){
+      var stack = function(ctx, next){
+	next();
+      };
+
+      // Making sure we're in FIFO order.
+      mfn.slice().reverse().forEach(function(fn){
+	stack = (function(_stack){
+	  return function(ctx, next){
+	    fn.call(null, ctx, function(){
+	      _stack.call(null, ctx, next);
+	    });
+	  };
+	})(stack);
+      });
+
+      return stack;
+    }
+
     this.use = function(fn){
-      var self = this;
-      stack = (function(_stack){
-        return function(ctx, next){
-          fn.call(null, ctx, function(){
-            _stack.call(null, ctx, next);
-          });
-        };
-      })(stack);
+      if (fn instanceof Array){
+	for (var i=0; i < fn.length; i++){
+	  this.use(fn[i]);
+	}
+      } else if (typeof(fn) === 'function'){
+	mfn.push(fn);
+      } else {
+	throw new TypeError("Expected a function or an Array of functions.");
+      }
+      return this;
     };
 
     this.exec = function(ctx){
       return new Promise(function(resolve, reject){
         try {
+	  var stack = build_stack();
           stack(ctx, function(){
             resolve(ctx);
           });
@@ -32,50 +52,5 @@ module.exports = (function(){
   }
   Middleware.prototype.constructor = Middleware;
   return Middleware;
-
-  /*
-  function compose(fnl){
-    return function(context, next){
-      var index = -1; // Last called function in the list.
-      function process(i){
-        if (i <= index){
-          return Promise.reject(new Error("next() called multiple times."));
-        }
-        index = i;
-        if (i === fnl.length){
-          return Promise.resolve();
-        }
-        
-        return new Promise(function(resolve, reject){
-          console.log("Hello there " + index);
-          fnl[i](context, function(){
-            resolve(process(i+1));
-          });
-          console.log("test " + index);
-        });
-      }
-      return process(0);
-    };
-  };
-
-  function Middleware(){
-    var middleware = [];
-
-    this.use = function(fn){
-      if (typeof(fn) !== 'function'){
-        throw new TypeError("Middleware function expected.");
-      }
-      middleware.push(fn);
-      return this;
-    };
-
-    this.exec = function(ctx){
-      var fn = compose(middleware);
-      return fn(ctx);
-    };
-  }
-  Middleware.prototype.constructor = Middleware;
-  return Middleware;
-  */
   
 })();
