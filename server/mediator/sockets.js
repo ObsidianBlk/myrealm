@@ -9,6 +9,7 @@
  */
 module.exports = function(workerid, emitter, r, config){
   var Promise = require('bluebird');
+  var hmac = require('crypto-js/hmac-sha256');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
   var Logger = require('../utils/logger')(config.logging);
@@ -418,11 +419,13 @@ module.exports = function(workerid, emitter, r, config){
 
 
   function EvtHandler(ctx, err){
-    if (!err){
-      ctx.send();
-    } else {
+    if (err){
       ctx.error(err.message);
+      if (typeof(ctx.data.token) !== 'undefined'){
+        ctx.response.hmac = hmac(JSON.stringify(ctx.response), ctx.data.token);
+      }
     }
+    ctx.send();
   }
 
   // Special client request to be handled here.

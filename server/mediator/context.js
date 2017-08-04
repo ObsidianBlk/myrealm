@@ -16,8 +16,11 @@ module.exports = function(co, request, d){
   var ctx = {
     response: {},
     error: function(message){
-      ctx.response.status = "error";
-      ctx.response.message = message;
+      ctx.response = {
+        type: ctx.request.type,
+        status:"error",
+        message:message
+      };
     }
   };
 
@@ -28,7 +31,7 @@ module.exports = function(co, request, d){
   var broadcast = (typeof(d.broadcast) === 'function') ? d.broadcast : function(){};
   var send = (typeof(d.send) === 'function') ? d.send : function(){};
 
-  var tokenData = null;
+  var data = {};
 
   if (co.id !== null){
     ctx.broadcast = function(receivers, exclusive){
@@ -62,18 +65,8 @@ module.exports = function(co, request, d){
       value: (co.id !== null) ? co.id : "UNVALIDATED"
     },
 
-    "tokenData":{
-      get:function(){return tokenData;},
-      set:function(d){
-	if (d instanceof Object){
-	  if (tokenData !== null){
-	    throw new Error("Token data can only be defined once.");
-	  }
-	  tokenData = d;
-	} else {
-	  throw new TypeError("Expected Object instance.");
-	}
-      }
+    "data":{
+      get:function(){return data;}
     }
   });
 
