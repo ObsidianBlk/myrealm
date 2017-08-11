@@ -9,7 +9,6 @@
  */
 module.exports = function(workerid, emitter, r, config){
   var Promise = require('bluebird');
-  var hmac = require('crypto-js/hmac-sha256');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
   var Logger = require('../utils/logger')(config.logging);
@@ -96,9 +95,17 @@ module.exports = function(workerid, emitter, r, config){
 	  send: Sockets.send,
 	  register: (co.id === null) ? function(){
 	    if (co.id !== null){
-	      logSocket.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
-	      CLIENT[co.id] = co;
+	      if (co.id in CLIENT){
+		logSocket.debug("[WORKER %d] Client '%s' registration re-established.", workerid, co.id);
+		clearTimeout(CLIENT[co.id].processID); // Clear any timeout currently set... Don't want it to delete this clients data.
+		if (CLIENT[co.id].buffer.length > 0){
+		  co.buffer = CLIENT[co.id].buffer;
+		}
+	      } else {
+		logSocket.debug("[WORKER %d] Officially registered client '%s'.", workerid, co.id);
+	      }
 	      // Tell any plugins that a client with the given id has "connected"
+	      CLIENT[co.id] = co;
 	      emitter.emit("client_connected", co.id);
 	    }
 	  } : null
@@ -140,8 +147,6 @@ module.exports = function(workerid, emitter, r, config){
   }
 
   function DropClient(id){
-    logSocket.info("[WORKER %d] <Client '%s'> Data will expire in 5 minutes.", workerid, id);
-    r.pub.expire(r.Key("visitor", id), 300 /* Five minutes */);
     // Clear the buffer processing timeout
     clearTimeout(CLIENT[id].processID);
     CLIENT[id].client = null; // The client connection is definitely gone. Keeping the rest in case of a reconnect.
@@ -417,20 +422,69 @@ module.exports = function(workerid, emitter, r, config){
     }
   });
 
+  // -------------------------------------------------------
+  // Listening for "client_connected" and "client_disconnected" events.
+
+  emitter.on("client_connected", function(id){
+    r.pub.persist(r.Key("visitor", id + "_data"));
+    r.pub.persist(r.Key("visitor", id + "_token"));
+    r.pub.persist(r.Key("visitor", id + "_ptoken"));
+  });
+
+  emitter.on("client_disconnected", function(id){
+    logSocket.info("[WORKER %d] <Client '%s'> Data will expire in 5 minutes.", workerid, id);
+    r.pub.expire(r.Key("visitor", id + "_data"), 300 /* Five minutes */);
+    r.pub.expire(r.Key("visitor", id + "_token"), 300 /* Five minutes */);
+    r.pub.expire(r.Key("visitor", id + "_ptoken"), 300 /* Five minutes */);
+  });
+
+
+  // -------------------------------------------------------
+  // Defining (re)connection and tokenization middleware
 
   function EvtHandler(ctx, err){
     if (err){
-      ctx.error(err.message);
-      if (typeof(ctx.data.token) !== 'undefined'){
-        ctx.response.hmac = hmac(JSON.stringify(ctx.response), ctx.data.token);
-      }
+      // If we get a strait up error, then something went wrong systematically. We don't send back a response for that.
+      logSocket.error(err.message);
+      ctx.error("Server error in processing request.");
     }
     ctx.send();
   }
 
-  // Special client request to be handled here.
-  Sockets.handler("connection",require('../middleware/connections')(config, r), EvtHandler);
-  Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), EvtHandler);
+  var con = require('../middleware/connection')(config, r);
+  var hmac = require('../middleware/hmac')(config, r);
+  var tokenize = require('../middleware/tokenize')(config, r);
+  
+  // Handler for unregistered connections looking to become registered with a new ID.
+  Sockets.handler(
+    "connection",
+    con.connect,
+    tokenize.generateToken,
+    EvtHandler
+  );
+
+  // Handler for unregistered connections looking to reestablish a lost connection with pre-existing ID.
+  Sockets.handler(
+    "reestablish",
+    tokenize.getTokenX,
+    hmac.verifyHMAC,
+    con.reestablish,
+    tokenize.generateToken,
+    hmac.generateHMAC,
+    EvtHandler
+  );
+
+  // Handler for registered connections looking to update their token before expiration.
+  Sockets.handler(
+    "validate",
+    tokenize.getToken,
+    hmac.verifyHMAC,
+    tokenize.generateToken,
+    hmac.generateHMAC,
+    EvtHandler
+  );
+  //Sockets.handler("connection",require('../middleware/connections')(config, r), EvtHandler);
+  //Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), EvtHandler);
 
   return Sockets;
 };

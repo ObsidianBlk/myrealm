@@ -39,14 +39,14 @@ module.exports = function(config, r){
 
   function HandleNewConnection(ctx){
     return new Promise(function(resolve, reject){
-      ctx.response.type = ctx.request.type;
       log.debug("Generating a new connection");
       GenerateVisitorID(10).then(function(id){
         log.debug("New Connection ID '%s'", id);
         ctx.co.id = id;
-        ctx.response.status = "success";
+        ctx.data.connection_new = true;
         var data = {
           // More data can be stored, but this is basic enough.
+	  id: ctx.co.id,
 	  username: "Visitor_" + ctx.co.id
         };
         var rkey = r.Key("visitor", id + "_data");
@@ -54,29 +54,38 @@ module.exports = function(config, r){
       }).catch(function(e){
         log.debug("%o", e);
         ctx.error("Failed to generate unique ID.");
+	resolve();
       });
     });
   }
+
   
 
   /*
-    Gets/generates connection information.
+    Generates connection information.
    */
-  return function(ctx, next){
-    if (typeof(ctx.co) === 'undefined'){
-      log.warning("Client connection already registered.");
-      throw new Error("Client connection already registered.");
-    } else if (ctx.request.type === "connection"){ // Just verify the request being processed. This middleware only handles one!
-      if (typeof(ctx.request.token) === 'undefined'){
-        log.debug("Generating ID for new connection.");
-        HandleNewConnection(ctx).then(function(){next();});
-      } else if (typeof(ctx.request.data) === 'undefined'){
-        log.warning("Request contains token but no data.");
-        throw new Error("Request contains token but no data.");
-      } else {
-	log.debug("Connection appears to be a revalidation. Passing to next step.");
-        next();
+  return {
+    connect: function(ctx, next){
+      if (ctx.errored === true){next();}
+      if (typeof(ctx.co) === 'undefined'){
+	log.warning("Client connection already registered.");
+	ctx.error("Connection registered. Invalid request.");
+	next();
       }
+
+      log.debug("Generating ID for new connection.");
+      HandleNewConnection(ctx).then(function(){next();});
+    },
+
+    reestablish: function(ctx, next){
+      if (ctx.errored === true){next();}
+      if (typeof(ctx.co) === 'undefined'){
+	log.warning("Client attempted to reestablish an already valid connection.");
+	ctx.error("Connection registered. Invalid request.");
+	next();
+      }
+      ctx.co.id = ctx.request.data.id;
+      next();
     }
   };
 };

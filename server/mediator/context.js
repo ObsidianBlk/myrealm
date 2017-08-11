@@ -14,13 +14,12 @@ clients (assumed to be) built in send() method.
 ----------------------------------------------------------------------- */
 module.exports = function(co, request, d){
   var ctx = {
-    response: {},
+    response: {
+      type: request.type,
+      status: "success"
+    },
     error: function(message){
-      ctx.response = {
-        type: ctx.request.type,
-        status:"error",
-        message:message
-      };
+      errmsg.push(message);
     }
   };
 
@@ -32,6 +31,7 @@ module.exports = function(co, request, d){
   var send = (typeof(d.send) === 'function') ? d.send : function(){};
 
   var data = {};
+  var errmsg = [];
 
   if (co.id !== null){
     ctx.broadcast = function(receivers, exclusive){
@@ -39,11 +39,24 @@ module.exports = function(co, request, d){
     };
 
     ctx.send = function(){
+      if (errmsg.length > 0){
+	ctx.response = {
+	  type: request.type,
+	  status: "error",
+	  messages: errmsg
+	};
+      }
       send(co.id, ctx.response);
     };
   } else {
     ctx.send = function(){
-      if (typeof(d.register) === 'function'){
+      if (errmsg.length > 0){
+	ctx.response = {
+	  type: request.type,
+	  status: "error",
+	  messages: errmsg
+	};
+      } else if (typeof(d.register) === 'function'){
 	d.register();
       }
       co.client.send(JSON.stringify(ctx.response));
@@ -67,6 +80,10 @@ module.exports = function(co, request, d){
 
     "data":{
       get:function(){return data;}
+    },
+
+    "errored":{
+      get:function(){return (errmsg.length > 0);}
     }
   });
 

@@ -6,149 +6,133 @@ module.exports = function(config, r){
 
   var tokenExpirationTime = (config.tokenExpiration) ? config.tokenExpiration : 900; // Default is 900 seconds (15 minutes)
 
-  /*
-    var rkey = r.Key("visitor", ctx.request.data.id);
-    r.pub.hmget([rkey, "token", "username"]).then(function(values){
-      var token = values[0];
-      var username = values[1];
-      ctx.response.type = ctx.request.type;
-      
-      if (token === ctx.request.token){
-	// Check to see if the token has expired yet.
-	jwt.verify(token, config.secret, function(err, decoded){
-	  if (err){
-	    ctx.error(err.message);
-            next();
-	  } else if (decoded.id !== ctx.request.data.id){
-	    ctx.error("Request ID and token ID do not match.");
-            next();
-	  } else {
-	    r.pub.expire(rkey, tokenExpirationTime).then(function(res){
-	      var data = {
-		id: ctx.request.data.id,
-		username: username
-	      };
-	      token = jwt.sign(data, config.secret, {expiresIn:tokenExpirationTime});
-	      r.pub.hset(rkey, "token", token).then(function(){
-		ctx.co.id = ctx.request.data.id;
-		ctx.response.status = "success";
-		ctx.response.data = data;
-		ctx.response.token = token;
-		next();
-	      }).catch(function(e){
-		ctx.error("Failed to generate updated token.");
-		next();
-	      });
-	    }).catch(function(e){
-	      ctx.error("Unknown error occured.");
-	      next();
-	    });
-	  }
-	});
-      } else { // Client gave an invalid token!
-	ctx.error("Token mismatch!");
-	next();
-      }
-    }).catch(function(e){
-      log.debug("%o", e);
-      ctx.response.type = ctx.request.type;
-      ctx.error("Failed to find token for id.");
-      next();
-    });
-    */
-
   
   function GetToken(id){
     var rkey = r.Key("visitor", id + "_token");
     return r.pub.get(rkey);
   }
 
-  function GenerateToken(ctx){
+  function GenerateToken(id){
     return new Promise(function(resolve, reject){
-      var rkey_data = r.Key("visitor", ctx.request.data.id + "_data");
+      var rkey_data = r.Key("visitor", id + "_data");
       // Get the user's current data.
       r.pub.hgetall(rkey_data).then(function(data){
-        var token = jwt.sign(data, config.secret, {expiresIn:tokenExpirationTime});
-        var rkey_token = r.Key("visitor", ctx.request.data.id + "_token");
-        r.pub.multi()
-          .set(rkey_token, token)
-          .expire(rkey_data, "24h")  // Resetting the expiration for both the user's data
-          .expire(rkey_token, "24h") // and their token.
-          .exec(function(err, results){
-            if (err){
-              ctx.error(err.message);
-            } else {
-              ctx.response.data = data;
-              ctx.response.token = token;
-              ctx.data.token = token;
-              ctx.data.request_validated = true; // This is a cheat, but we've validated the request using token matching instead of hmac check.
-                // NOTE: Perhaps change this in the future?
-            }
-            resolve();
-          });
+        resolve({token: jwt.sign(data, id + config.secret, {expiresIn:tokenExpirationTime}), vdata:data});
+      }).error(function(err){
+	reject(err);
       });
     });
   }
 
-  function UpdateTokenExpiration(ctx, token){
+  function StoreToken(id, token){
     return new Promise(function(resolve, reject){
-      // Check if token expired...
-      jwt.verify(token, config.secret, function(err, decoded){
-        if (!err){
-          // No error, so we just update the token as requested.
-          resolve(GenerateToken(ctx));
-        } else if (err.name === "TokenExpiredError"){
-          ctx.error("Token has expired.");
+      var rkey_token = r.Key("visitor", id + "_token");
+      var rkey_data = r.Key("visitor", id + "_data");
+      r.pub.multi()
+	.set(rkey_token, token)
+	.expire(rkey_data, "24h")  // Resetting the expiration for both the user's data
+	.expire(rkey_token, "24h") // and their token.
+	.exec(function(err, results){
+          if (err){
+            reject(err);
+          }
           resolve();
-        }
+	});
+    });
+  }
+
+  function ValidateToken(id, token){
+    new Promise(function(resolve, reject){
+      jwt.verify(token, id + config.secret, function(err, decoded){
+	if (err){
+	  reject(err);
+	}
+	resolve({token:token, vdata:decoded});
       });
     });
   }
 
-  /*
-   */
-  return function(ctx, next){
-    if (ctx.request.type === "connection"){
-      // The connection request is for revalidization (and token update).
-      if (typeof(ctx.request.token) === 'string' && typeof(ctx.request.data) !== 'undefined'){
-        GetToken(ctx.request.id).then(function(val){
-          var token = val[0];
-          // Validate that the token stored in redis is the same as the token given to us.
-          if (token !== ctx.request.token){
-            // Oh... what a shame.
-            ctx.error("Token mismatch!");
-            return Promise.resolve();
-          }
-          // Ok, the tokens match, let's generate a new token with an updated expiration!
-          return UpdateTokenExpiration(ctx, token);
-        }).then(function(){
-          next();
-        });
-        // DONE
 
-      // The connection is for a new connection which requires a new token.
-      } else if (typeof(ctx.request.token) === 'undefined'){
-        GenerateToken(ctx).then(function(){
-          next();
-        });
-        // DONE
-      }
-      
-    } else {
-      // Otherwise, this is a generic request. Simply look for a token, check that it's not expired, then store it in the ctx.data object for use
-      // by any possible validators.
-      
+  return {
+    /*
+      Create a new token using the current visitors stored data. The newly generated token will be stored in
+      'ctx.response.data.token' field.
+     */
+    generateToken: function(ctx, next){
+      if (ctx.errored === true){next();}
+      var newgen = typeof(ctx.co) !== 'undefined';
+      var id = (newgen === true) ? ctx.co.id : ctx.id;
+      var info = null;
+      GenerateToken(id).then(function(i){
+	info = i;
+	return StoreToken(id, info.token);
+      }).then(function(){
+	if (info === null){
+	  throw new Error("Token generation failed. Unknown error.");
+	}
+	if (newgen === true){
+	  ctx.response.data.vdata = info.vdata;
+	  ctx.response.data.token = info.token;
+	}
+	next();
+      });
+    },
+
+
+    /*
+      Obtains the current token for the connection, decodes it (to validate it hasn't yet expired), and stores the token and it's decoded
+      data in the 'ctx.data.token' and 'ctx.data.vdata' fields respectively, to be used by further middleware (ex, hmac validation).
+     */
+    getToken: function(ctx, next){
+      if (ctx.errored === true){next();}
       GetToken(ctx.id).then(function(token){
-        token = token[0];
-        jwt.verify(token, config.secret, function(err, decoded){
-          if (!err){
-            ctx.data.token = token;
-            next();
-          } else if (err.name === "TokenExpiredError"){
-            ctx.error("Token has expired.");
-            next();
-          }
-        });
+	return ValidateToken(ctx.id, token);
+      }).then(function(info){
+	ctx.data.token = info.token;
+	ctx.data.vdata = info.vdata;
+	next();
+      }).error(function(err){
+	if (err.name === "TokenExpiredError"){
+	  ctx.error("Token has expired.");
+	} else {
+	  log.debug(err.message);
+	  ctx.error("Unknown error has occured.");
+	}
+	next();
+      });
+    },
+
+    /*
+      Special case of the getToken() middleware. This version will ONLY operate for "reestablish" requests made by unverified connections,
+      in which the request must contain a 'data.id' parameter.
+
+      NOTE: This middleware should not be used outside of the "reestablish" request middleware.
+     */
+    getTokenX: function(ctx, next){
+      if (ctx.errored === true){next();}
+      if (ctx.request.type !== 'reestablish'){
+	throw new Error("Middleware function used on invalid request name.");
+      }
+      if (typeof(ctx.request.data.id) !== 'string'){
+	ctx.error("Request invalid.");
+	next();
+      }
+
+      var id = ctx.request.data.id;
+      GetToken(id).then(function(token){
+	return ValidateToken(id, token);
+      }).then(function(info){
+	ctx.data.token = info.token;
+	ctx.data.vdata = info.vdata;
+	next();
+      }).error(function(err){
+	if (err.name === "TokenExpiredError"){
+	  ctx.error("Token has expired.");
+	} else {
+	  log.debug(err.message);
+	  ctx.error("Unknown error has occured.");
+	}
+	next();
       });
     }
   };
