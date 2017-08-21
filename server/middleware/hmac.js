@@ -1,7 +1,7 @@
 module.exports = function(config, r){
   //var jwt = require('jsonwebtoken');
   var Promise = require('bluebird');
-  var hmac = require('crypto-js/hmac-sha256');
+  var Crypto = require('crypto-js');
   var Logger = require('../utils/logger')(config.logging);
   var log = new Logger(config.logDomain + ":middleware:hmac");
 
@@ -14,19 +14,23 @@ module.exports = function(config, r){
     verifyHMAC: function(ctx, next){
       if (ctx.errored === true){next();}
       if (typeof(ctx.request.hmac) !== 'string'){
-	throw new Error("Missing required HMAC parameter!");
+	ctx.error("Missing required HMAC parameter!");
+	next();
+	return;
       }
       if (typeof(ctx.data.token) !== 'string'){
-	throw new Error("No token available to verify request HMAC.");
+	ctx.error("No token available to verify request HMAC.");
+	next();
+	return;
       }
 
       var rmsg = {type:ctx.request.type};
       if (typeof(ctx.request.data) !== 'undefined'){
 	rmsg.data = ctx.request.data;
       }
-      var res = hmac(JSON.stringify(rmsg), ctx.data.token);
+      var res = Crypto.HmacSHA256(JSON.stringify(rmsg), ctx.data.token).toString(Crypto.enc.Hex);
       if (res !== ctx.request.hmac){
-	throw new Error("Request HMAC mismatch!");
+	ctx.error("Request HMAC mismatch!");
       }
       next();
     },
@@ -37,20 +41,20 @@ module.exports = function(config, r){
     generateHMAC: function(ctx, next){
       if (ctx.errored === true){next();}
       if (typeof(ctx.response.status) !== 'string'){
-	throw new Error("Response missing status parameter.");
+	ctx.error("Response missing status parameter.");
       }
       if (typeof(ctx.data.token) !== 'string'){
-	throw new Error("No token available to generate output HMAC.");
+	ctx.error("No token available to generate output HMAC.");
       }
 
       // We only generate HMAC values for successful responses.
-      if (ctx.response.status === "success"){
+      if (ctx.errored === false){
 	var msg = {
 	  type: ctx.response.type,
 	  status: ctx.response.status,
 	  data: ctx.response.data
 	};
-	ctx.response.hmac = hmac(JSON.stringify(msg), ctx.data.token);
+	ctx.response.hmac = Crypto.HmacSHA256(JSON.stringify(msg), ctx.data.token).toString(Crypto.enc.Hex);
       }
       next();
     }

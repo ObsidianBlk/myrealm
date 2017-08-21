@@ -18,7 +18,7 @@ module.exports = function(config, r){
       // Get the user's current data.
       r.pub.hgetall(rkey_data).then(function(data){
         resolve({token: jwt.sign(data, id + config.secret, {expiresIn:tokenExpirationTime}), vdata:data});
-      }).error(function(err){
+      }).catch(function(err){
 	reject(err);
       });
     });
@@ -35,6 +35,7 @@ module.exports = function(config, r){
 	.exec(function(err, results){
           if (err){
             reject(err);
+	    return;
           }
           resolve();
 	});
@@ -42,11 +43,14 @@ module.exports = function(config, r){
   }
 
   function ValidateToken(id, token){
-    new Promise(function(resolve, reject){
+    return new Promise(function(resolve, reject){
       jwt.verify(token, id + config.secret, function(err, decoded){
 	if (err){
+	  log.debug("Validation rejected: %s", err);
 	  reject(err);
+	  return;
 	}
+	log.debug("Validated");
 	resolve({token:token, vdata:decoded});
       });
     });
@@ -60,8 +64,7 @@ module.exports = function(config, r){
      */
     generateToken: function(ctx, next){
       if (ctx.errored === true){next();}
-      var newgen = typeof(ctx.co) !== 'undefined';
-      var id = (newgen === true) ? ctx.co.id : ctx.id;
+      var id = (typeof(ctx.co) !== 'undefined') ? ctx.co.id : ctx.id;
       var info = null;
       GenerateToken(id).then(function(i){
 	info = i;
@@ -70,10 +73,10 @@ module.exports = function(config, r){
 	if (info === null){
 	  throw new Error("Token generation failed. Unknown error.");
 	}
-	if (newgen === true){
-	  ctx.response.data.vdata = info.vdata;
-	  ctx.response.data.token = info.token;
-	}
+	ctx.response.data = {
+	  vdata: info.vdata,
+	  token: info.token
+	};
 	next();
       });
     },
@@ -91,7 +94,7 @@ module.exports = function(config, r){
 	ctx.data.token = info.token;
 	ctx.data.vdata = info.vdata;
 	next();
-      }).error(function(err){
+      }).catch(function(err){
 	if (err.name === "TokenExpiredError"){
 	  ctx.error("Token has expired.");
 	} else {
@@ -125,7 +128,7 @@ module.exports = function(config, r){
 	ctx.data.token = info.token;
 	ctx.data.vdata = info.vdata;
 	next();
-      }).error(function(err){
+      }).catch(function(err){
 	if (err.name === "TokenExpiredError"){
 	  ctx.error("Token has expired.");
 	} else {

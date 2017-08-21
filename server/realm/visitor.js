@@ -6,8 +6,10 @@ module.exports = function(m, r, config){
   var log = new Logger(config.logDomain + ":visitor");
   var workerid = m.sockets.workerid;
 
-  var mwValidation = require('../middleware/validation')(config, r);
-
+  //var mwValidation = require('../middleware/validation')(config, r);
+  var mwTokenize = require('../middleware/tokenize')(config, r);
+  var mwHMAC = require('../middleware/hmac')(config, r);
+  
   var NS_TELEMETRY = "visitor:telemetry";
 
 
@@ -142,8 +144,11 @@ module.exports = function(m, r, config){
   // ----------------------------------------------------------------------
   // Direct Socket Client Request!
   // ----------------------------------------------------------------------
-  m.sockets.handler("visitor_move", mwValidation, function(ctx, err){
-    if (!err){
+  m.sockets.handler(
+    "visitor_move",
+    mwTokenize.getToken,
+    mwHMAC.verifyHMAC,
+    function(ctx, next){
       getTelemetry(ctx.id).then(function(result){
 	var data = TelemetryDataBuilder(ctx.request.data, [
 	  "position_dx", "position_dy", "position_dz"
@@ -152,7 +157,7 @@ module.exports = function(m, r, config){
 	    data.hasOwnProperty("position_dy") === false ||
 	    data.hasOwnProperty("position_dz") === false){
 	  ctx.error("Some or all positional deltas missing.");
-	  ctx.send();
+	  next();
 	} else {
 	  // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
 	  result.position_x = ((result.position_x !== null) ? Number(result.position_x) : 0) +  data.position_dx;
@@ -163,25 +168,31 @@ module.exports = function(m, r, config){
 	    result.visitor_id = ctx.id;
 	    resp.type = "telemetry";
 	    resp.data = result;
-	    //log.debug("[WORKER %d] Sending positional telemetry!", workerid);
-	    ctx.broadcast();
-	    // TODO: Filter "receivers" to only those in the same layers.
+	    next();
 	  });
 	}
       }).error(function(err){
 	log.error("[WORKER %d] %s", workerid, err);
+	ctx.error("Unknown server error occured.");
       });
-    } else {
-      log.error("[WORKER %d] %s", workerid, err);
-      ctx.error(err.message);
-      ctx.send();
+    },
+    function(ctx, err){
+      if (ctx.errored === true){
+	ctx.send();
+      } else {
+	ctx.broadcast();
+	// TODO: Filter "receivers" to only those in the same layers.
+      }
     }
-  });
+  );
 
-  m.sockets.handler("visitor_orientation", mwValidation, function(ctx, err){
-    // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
-    // head orientation.
-    if (!err){
+  m.sockets.handler(
+    "visitor_orientation",
+    mwTokenize.getToken,
+    mwHMAC.verifyHMAC,
+    function(ctx, next){
+      // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
+      // head orientation.
       var data = TelemetryDataBuilder(ctx.request.data, [
 	"rotation_x", "rotation_y", "rotation_z",
 	"facing_x", "facing_y", "facing_z"
@@ -191,31 +202,39 @@ module.exports = function(m, r, config){
 	resp.type = "telemetry";
 	data.visitor_id = ctx.id;
 	resp.data = data;
-	//log.debug("[WORKER %d] Sending rotational telemetry!", workerid);
-	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
+	next();
+      }).error(function(err){
+	log.error("[WORKER %d] %s", workerid, err);
+	ctx.error("Server error has occured.");
+	next();
       });
-    } else {
-      log.error("[WORKER %d] %s", workerid, err);
+    },
+    function(ctx, err){
+      if (ctx.errored === true){
+	ctx.send();
+      } else {
+	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
+      }
     }
-  });
+  );
 
   // List and Telemetry of existing visitors!
-  m.sockets.handler("visitor_list", mwValidation, function(ctx, err){
-    if (!err){
-      getVisitorListAndTelemetry().then(function(result){
-        result.forEach(function(msg){
-          if (msg.visitor_id !== ctx.id){
-	    log.debug("[WORKER %d] Sending Visitor Enter Data %o", workerid, msg);
-            m.sockets.send(ctx.id, {type:"visitor_enter", data:msg});
-          }
-        });
-      });
-    } else {
-      log.error("[WORKER %d] %s", workerid, err);
-      ctx.error(err.message);
-      ctx.send();
+  m.sockets.handler(
+    "visitor_list",
+    mwTokenize.getToken,
+    mwHMAC.verifyHMAC,
+    function(ctx, err){
+      if (!err){
+	getVisitorListAndTelemetry().then(function(result){
+          ctx.response.data = result.filter(function(i){return i.visitor_id !== ctx.id;});
+	  ctx.response.type = ctx.request.type;
+	  ctx.send();
+	});
+      } else {
+	log.error("[WORKER %d] %s", workerid, err);
+      }
     }
-  });
+  );
   
   // ----------------------------------------------------------------------
   // Event Handlers
@@ -235,10 +254,10 @@ module.exports = function(m, r, config){
 	    position_y: telemetry.position_y,
 	    position_z: telemetry.position_z
 	  }
-	}, true);
+	}, {genhmac:true});
 	
 	// Now... let everyone ELSE know there's a new visitor!
-	m.sockets.broadcast({ // TODO: Filter "receivers" to only those in the same layers.
+	m.sockets.broadcast({
 	  type: "visitor_enter",
 	  data: {
 	    visitor_id:id,

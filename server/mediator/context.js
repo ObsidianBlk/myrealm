@@ -38,7 +38,7 @@ module.exports = function(co, request, d){
       broadcast(ctx.response, receivers, (exclusive === true));
     };
 
-    ctx.send = function(){
+    ctx.send = function(hmackey){
       if (errmsg.length > 0){
 	ctx.response = {
 	  type: request.type,
@@ -46,7 +46,7 @@ module.exports = function(co, request, d){
 	  messages: errmsg
 	};
       }
-      send(co.id, ctx.response);
+      send(co.id, ctx.response, {genhmac: true});
     };
   } else {
     ctx.send = function(){

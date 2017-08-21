@@ -10,9 +10,10 @@ module.exports = function(emitter, host, options){
     options.port = null;
   }
   options.ssl = (options.ssl === true);
+  var Crypto = require('crypto-js');
 
 
-  var user_data = null;
+  var visitor_data = null;
   var currentToken = null;
   var socket = null;
 
@@ -34,7 +35,7 @@ module.exports = function(emitter, host, options){
 	  server.flush();
 	} else {
 	  if (currentToken !== null){
-	    request.token = currentToken;
+	    request.hmac = Crypto.HmacSHA256(JSON.stringify(request), currentToken).toString(Crypto.enc.Hex);
 	  }
 	  if (socket !== null){
 	    socket.send(JSON.stringify(request));
@@ -49,16 +50,21 @@ module.exports = function(emitter, host, options){
     // Send all of the buffered requests.
     flush: function(){
       if (requestBuffer.length > 0){
+	var rbuffer = requestBuffer.slice(); // Quick copy... in case sending the data is async (I'm not sure ATM).
+	requestBuffer.splice(0);
+	
 	if (currentToken !== null){
-	  requestBuffer.forEach(function(req){
-	    req.token = currentToken;
+	  rbuffer.forEach(function(req){
+	    req.hmac = Crypto.HmacSHA256(JSON.stringify(req), currentToken).toString(Crypto.enc.Hex);
 	  });
 	}
 	if (socket !== null){
-	  socket.send(JSON.stringify({
-	    cmd:"multi",
-	    data: requestBuffer.slice() // Quick copy... in case sending the data is async (I'm not sure ATM).
-	  }));
+	  var msg = {
+	    type:"multi",
+	    data: rbuffer
+	  };
+	  msg.hmac = Crypto.HmacSHA256(JSON.stringify(msg), currentToken).toString(Crypto.enc.Hex);
+	  socket.send(JSON.stringify(msg));
 	}
 	requestBuffer.splice(0);
       }
@@ -74,11 +80,11 @@ module.exports = function(emitter, host, options){
     },
 
     "id":{
-      get:function(){return (user_data !== null) ? user_data.id : "";}
+      get:function(){return (visitor_data !== null) ? visitor_data.id : "";}
     },
 
     "username":{
-      get:function(){return (user_data !== null) ? user_data.username : "";}
+      get:function(){return (visitor_data !== null) ? visitor_data.username : "";}
     }
   });
 
@@ -94,7 +100,12 @@ module.exports = function(emitter, host, options){
 
     socket.onopen = function (event) {
       console.log("Socket connected to server!");
-      server.send("connection", user_data);
+      if (visitor_data !== null){
+	console.log("Requesting to re-establish old connection.");
+	server.send("reestablish", visitor_data);
+      } else {
+	server.send("connection");
+      }
       awaitingValidation = true;
     };
 
@@ -108,6 +119,20 @@ module.exports = function(emitter, host, options){
       }
       
       if ("type" in msg){
+	var hasHMAC = ("hmac" in msg);
+	if (msg.type !== 'connection' && !hasHMAC){
+	  console.error("HMAC hash missing for message '" + msg.type + "'");
+	  return;
+	} else if (hasHMAC === true){
+	  var msghmac = msg.hmac;
+	  delete msg.hmac;
+	  var hash = Crypto.HmacSHA256(JSON.stringify(msg), currentToken).toString(Crypto.enc.Hex);
+	  if (hash !== msghmac){
+	    console.error("HMAC hash mismatch. Message possibly modified!");
+	    return;
+	  }
+	  msg.hmac = msghmac;
+	}
 	emitter.emit(msg.type, msg.data, msg, server);
       }
     };
@@ -119,6 +144,8 @@ module.exports = function(emitter, host, options){
     if (data instanceof Array){
       data.forEach(function(item){
 	if ("type" in item){
+	  // TODO: Each message in the multi-message should also contain hmac hash values, and none of the messages should be
+	  // transmitted until all hmacs are verified. If even one failed, none of the messages should be processed.
 	  emitter.emit(item.type, item.data, item, server);
 	}
       });
@@ -132,13 +159,34 @@ module.exports = function(emitter, host, options){
       awaitingValidation = false;
       emitter.emit("connection_error");
     } else {
-      user_data = data;
-      currentToken = msg.token;
+      visitor_data = data.vdata;
+      currentToken = data.token;
       awaitingValidation = false;
-      console.log("[CONNECTION ESTABLISHED] Username: " + user_data.username);
+      console.log("[CONNECTION ESTABLISHED] Username: " + visitor_data.username);
       emitter.emit("connected", {
-	id: user_data.id,
-	username: user_data.username
+	id: visitor_data.id,
+	username: visitor_data.username
+      });
+    }
+  });
+
+  emitter.on("reestablish", function(data, msg){
+    if (msg.status === "error"){
+      console.error("FAILED TO RE-ESTABLISH CONNECTION: " + msg.message);
+      visitor_data = null;
+      currentToken = null;
+      awaitingValidation = false;
+      console.log("Attempting a new connection with server.");
+      server.send("connection");
+      awaitingValidation = true;
+    } else {
+      visitor_data = data.vdata;
+      currentToken = data.token;
+      awaitingValidation = false;
+      console.log("Connection re-established.");
+      emitter.emit("connected", {
+	id: visitor_data.id,
+	username: visitor_data.username
       });
     }
   });

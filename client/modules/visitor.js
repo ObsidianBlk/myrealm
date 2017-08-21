@@ -51,22 +51,8 @@ if (typeof(window.REALM) === 'undefined'){
     return t;
   })();
   var ME = null;
-  
-  REALM.Emitter.on("connected", function(data){
-    var me_el = document.querySelector("#me");
-    ME = data;
-    me_el.setAttribute("vcam", "username:" + ME.username + ";v_id:" + ME.id + "");
-    if (isMobile === true){
-      me_el.setAttribute("wasd-controls", "enabled:false;");
-      me_el.setAttribute("touch-move-controls", "enabled:true;");
-    } else {
-      me_el.setAttribute("wasd-controls", "enabled:true;");
-      me_el.setAttribute("touch-move-controls", "enabled:false;");
-    }
-    REALM.Server.send("visitor_list"); // Request a list of already connected visitors. (results will come in as "visitor_enter" events).
-  });
 
-  REALM.Emitter.on("visitor_enter", function(data){
+  function AddNewVisitor(data){
     var t = data.telemetry;
     var scene = SCENE();
 
@@ -83,6 +69,24 @@ if (typeof(window.REALM) === 'undefined'){
       el.setAttribute("visitor", "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id);
       el.setAttribute("position", t.position_x + " " + t.position_y + " " + t.position_z);
     }
+  }
+  
+  REALM.Emitter.on("connected", function(data){
+    var me_el = document.querySelector("#me");
+    ME = data;
+    me_el.setAttribute("vcam", "username:" + ME.username + ";v_id:" + ME.id + "");
+    if (isMobile === true){
+      me_el.setAttribute("wasd-controls", "enabled:false;");
+      me_el.setAttribute("touch-move-controls", "enabled:true;");
+    } else {
+      me_el.setAttribute("wasd-controls", "enabled:true;");
+      me_el.setAttribute("touch-move-controls", "enabled:false;");
+    }
+    REALM.Server.send("visitor_list"); // Request a list of already connected visitors. (results will come in as "visitor_enter" events).
+  });
+
+  REALM.Emitter.on("visitor_enter", function(data){
+    AddNewVisitor(data);
   });
 
   REALM.Emitter.on("visitor_exit", function(data){
@@ -93,6 +97,13 @@ if (typeof(window.REALM) === 'undefined'){
 	eParent.removeChild(el);
       }
     }
+  });
+
+  REALM.Emitter.on("visitor_list", function(data, msg){
+    console.log(msg);
+    data.forEach(function(visitor){
+      AddNewVisitor(visitor);
+    });
   });
   
 

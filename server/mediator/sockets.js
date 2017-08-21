@@ -9,6 +9,7 @@
  */
 module.exports = function(workerid, emitter, r, config){
   var Promise = require('bluebird');
+  var Crypto = require('crypto-js');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
   var Logger = require('../utils/logger')(config.logging);
@@ -63,11 +64,15 @@ module.exports = function(workerid, emitter, r, config){
     default: // Send all msgs in a special command.
       buff = co.buffer;
       co.buffer = [];
+
+      var msg = {
+	type: "multi",
+	data: buff
+      };
+      msg.hmac = Crypto.HmacSHA256(JSON.stringify(msg), co.token).toString(Crypto.enc.Hex);
       logSocket.debug("[WORKER %d] Sending buffered commands to client '%s'.", workerid, co.id);
-      co.client.send(JSON.stringify({
-	type:"multi",
-        data:buff
-      }));
+      
+      co.client.send(JSON.stringify(msg));
     }
 
     // Wait for the next timeout to process.
@@ -140,9 +145,9 @@ module.exports = function(workerid, emitter, r, config){
       }
       
       clients.forEach(function(cID){
-	Sockets.send(cID, msg);
+	Sockets.send(cID, msg, {genhmac:true});
       });
-      resolve(); // Do I need to use this, since I'm not returning a value?
+      resolve(); // Do I need to use this, since I'm not returning a value? ... the answer is yes. Why? Don't worry about it!
     });
   }
 
@@ -157,6 +162,13 @@ module.exports = function(workerid, emitter, r, config){
     }, 5000*60);
     // Tell any plugin that a client with the given id has been "disconnected"
     emitter.emit("client_disconnected", id);
+  }
+
+
+  function SetClientToken(id, token){
+    if (id in CLIENT){
+      CLIENT[id].token = token;
+    }
   }
   
 
@@ -310,6 +322,7 @@ module.exports = function(workerid, emitter, r, config){
     connection:function(client){
       var co = {
 	id: null,
+	token: null,
 	client: client,
 	buffer: [],
 	processID: null
@@ -356,20 +369,32 @@ module.exports = function(workerid, emitter, r, config){
      * Sends msg object to the client with the given id. If immediate is true, the message will not be queued; instead sent immediately.
      * NOTE: This method sends the message object as given after being converted to a JSON string..
      *
+     * Available options...
+     *  [boolean] immediate - If true, the message will be sent to the client immediately.
+     *  [boolean] genhmac - If true, will generate an hmac value for the given message, assuming one is not already present. 
+     *
      * @method send
      * @param {string} id - The id of the client socket to send to.
      * @param {object} msg - Object to send to the client (as a JSON string)
-     * @param {boolean} [immediate=false] - If true, message will be sent immediately instead of being buffered.
+     * @param {object} options - Object containing all of the optional options.
      * @returns {Sockets}
      */
-    send:function(id, msg, immediate){
-      immediate = (immediate === true);
+    send:function(id, msg, options){
+      options = (typeof(options) === typeof({})) ? options : {};
+      var immediate = (options.immediate === true);
+      var genhmac = (options.genhmac === true);
+      
       if (id in CLIENT){
 	var co = CLIENT[id];
 	if (co.processID === null){
 	  co.processID = setTimeout(function(){
 	    ProcessClientBuffers(co.id);
 	  }, clientBufferTransmitRate);
+	}
+
+	if (genhmac === true && typeof(msg) === typeof({}) && typeof(msg.hmac) === 'undefined'){
+	  msg = JSON.parse(JSON.stringify(msg)); // Get a new unique copy... just in case.
+	  msg.hmac = Crypto.HmacSHA256(JSON.stringify(msg), co.token).toString(Crypto.enc.Hex);
 	}
 	
 	if (immediate === true){
@@ -409,6 +434,11 @@ module.exports = function(workerid, emitter, r, config){
       };
       r.pub.publish(broadcastKey, JSON.stringify(bdat));
       return Sockets;
+    },
+
+    getIDToken: function(id){
+      var rKey = r.Key("visitor", + id + "_token");
+      return r.pub.get(rKey);
     }
   };
 
@@ -448,39 +478,46 @@ module.exports = function(workerid, emitter, r, config){
       logSocket.error(err.message);
       ctx.error("Server error in processing request.");
     }
+    // This should indicate a new token has been generated for the client.
+    if (typeof(ctx.response.data.token) === 'string' && typeof(ctx.response.data.vdata) === typeof({})){
+      if (typeof(ctx.co) !== 'undefined'){
+	ctx.co.token = ctx.response.data.token;
+      } else {
+	SetClientToken(ctx.id, ctx.response.data.token);
+      }
+    }
     ctx.send();
   }
 
-  var con = require('../middleware/connection')(config, r);
-  var hmac = require('../middleware/hmac')(config, r);
-  var tokenize = require('../middleware/tokenize')(config, r);
+  var mwcon = require('../middleware/connection')(config, r);
+  var mwhmac = require('../middleware/hmac')(config, r);
+  var mwtokenize = require('../middleware/tokenize')(config, r);
   
   // Handler for unregistered connections looking to become registered with a new ID.
   Sockets.handler(
     "connection",
-    con.connect,
-    tokenize.generateToken,
+    mwcon.connect,
+    mwtokenize.generateToken,
     EvtHandler
   );
 
   // Handler for unregistered connections looking to reestablish a lost connection with pre-existing ID.
   Sockets.handler(
     "reestablish",
-    tokenize.getTokenX,
-    hmac.verifyHMAC,
-    con.reestablish,
-    tokenize.generateToken,
-    hmac.generateHMAC,
+    mwtokenize.getTokenX,
+    mwhmac.verifyHMAC,
+    mwcon.reestablish,
+    mwtokenize.generateToken,
+    mwhmac.generateHMAC, // This should be the only request that EVER needs this!
     EvtHandler
   );
 
   // Handler for registered connections looking to update their token before expiration.
   Sockets.handler(
     "validate",
-    tokenize.getToken,
-    hmac.verifyHMAC,
-    tokenize.generateToken,
-    hmac.generateHMAC,
+    mwtokenize.getToken,
+    mwhmac.verifyHMAC,
+    mwtokenize.generateToken,
     EvtHandler
   );
   //Sockets.handler("connection",require('../middleware/connections')(config, r), EvtHandler);

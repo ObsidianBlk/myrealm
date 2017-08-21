@@ -5,7 +5,7 @@ module.exports = function(m, r, config){
   var logEther = new Logger(config.logDomain + ":ether");
   var workerid = m.sockets.workerid;
 
-  var mwValidation = require('../middleware/validation')(config, r);
+  //var mwValidation = require('../middleware/validation')(config, r);
 
   var namespace = {
     entity:"entity" // More to come.
