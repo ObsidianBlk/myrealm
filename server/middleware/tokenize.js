@@ -75,7 +75,8 @@ module.exports = function(config, r){
 	}
 	ctx.response.data = {
 	  vdata: info.vdata,
-	  token: info.token
+	  token: info.token,
+	  token_expiration: tokenExpirationTime
 	};
 	next();
       });

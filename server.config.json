@@ -2,6 +2,7 @@
   "processes":0,
   "logDomain":"myrealm",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
+  "tokenExpiration": 60,
   "terminal":{
     "host":"127.0.0.1",
     "port":3010,

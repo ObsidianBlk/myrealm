@@ -492,6 +492,7 @@ module.exports = function(workerid, emitter, r, config){
   var mwcon = require('../middleware/connection')(config, r);
   var mwhmac = require('../middleware/hmac')(config, r);
   var mwtokenize = require('../middleware/tokenize')(config, r);
+  var mwvisitorInfo = require('../middleware/visitorInfo')(config, r);
   
   // Handler for unregistered connections looking to become registered with a new ID.
   Sockets.handler(
@@ -508,7 +509,7 @@ module.exports = function(workerid, emitter, r, config){
     mwhmac.verifyHMAC,
     mwcon.reestablish,
     mwtokenize.generateToken,
-    mwhmac.generateHMAC, // This should be the only request that EVER needs this!
+    mwhmac.generateHMAC, // Explicitly generate the HMAC. A new Token is created.
     EvtHandler
   );
 
@@ -518,10 +519,20 @@ module.exports = function(workerid, emitter, r, config){
     mwtokenize.getToken,
     mwhmac.verifyHMAC,
     mwtokenize.generateToken,
+    mwhmac.generateHMAC, // Explicitly generate the HMAC. A new Token is created.
     EvtHandler
   );
-  //Sockets.handler("connection",require('../middleware/connections')(config, r), EvtHandler);
-  //Sockets.handler("revalidate", require('../middleware/validation'), require('../middleware/revalidation'), EvtHandler);
+
+  // Handler for updating visitor information.
+  Sockets.handler(
+    "visitorUpdate",
+    mwtokenize.getToken,
+    mwhmac.verifyHMAC,
+    mwvisitorInfo.update,
+    mwtokenize.generateToken,
+    mwhmac.generateHMAC, // Explicitly generate the HMAC. A new Token is created.
+    EvtHandler
+  );
 
   return Sockets;
 };
