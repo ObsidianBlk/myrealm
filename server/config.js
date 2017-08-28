@@ -145,17 +145,33 @@ module.exports = (function(){
     ]
   };
 
+  var DEFAULT_CONFIG_PATH = "server.config.json";
   var path = require('path');
   var tv4 = require('tv4');
 
   // -------------------------------------------------------------------------------------------
+  // Check process.env for "MYREALM_CONFIG_PATH" property, which should contain an alternate path to the config file.
+  // -------------------------------------------------------------------------------------------
+  var config_path = (typeof(process.env.MYREALM_CONFIG_PATH) === 'string') ? process.env.MYREALM_CONFIG_PATH : DEFAULT_CONFIG_PATH;
+
+  // -------------------------------------------------------------------------------------------
   // Loading in the Config file (if it exists)...
   // -------------------------------------------------------------------------------------------
+  var config = null;
   try {
-    var config = require(path.resolve('server.config.json'));
+    config = require(path.resolve(config_path));
   } catch (e) {
-    console.error("Failed to load 'server.config.json'.\n\"" + e.message + "\".\nUsing default configuration.");
+    console.error("Failed to load '" + config_path + "'.\n\"" + e.message + "\".");
     config = null;
+  }
+  if (config === null && config_path !== DEFAULT_CONFIG_PATH){
+    try{
+      console.log("Attempting to load default configuration path...");
+      config = require(path.resolve(DEFAULT_CONFIG_PATH));
+    } catch (e){
+      console.error("Failed to load '" + DEFAULT_CONFIG_PATH + "'.\n\"" + e.message + "\".\nUsing default configuration.");
+      config = null;
+    }
   }
 
   if (config !== null && tv4.validate(config, CONFIG_SCHEMA) === false){
