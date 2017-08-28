@@ -1,8 +1,143 @@
 
 module.exports = (function(){
   // -------------------------------------------------------------------------------------------
-// Server.config.json Schema
-// -------------------------------------------------------------------------------------------
+  // Defining configuration sub-schema
+  // -------------------------------------------------------------------------------------------
+  // Configuration for REDIS connections.
+  var CSUB_REDIS = {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string"
+      },
+      "port": {
+        "type": "integer"
+      },
+      "connectionTimeout":{
+	"type": "integer"
+      },
+      "serverkey":{
+	"type": "string"
+      }
+    },
+    "required": [
+      "host",
+      "port"
+    ]
+  };
+
+  // Configuration for a single REALM (aka, sub-domain)
+  var CSUB_REALM = {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "properties": {
+      "domain_name":{ // Example: "/", "/Realm1", "/User_12345"
+	"type":"string",
+	"minlength": 1
+      },
+      "www_path": { // The path to the root directory for this sub-realm.
+	"type":"string",
+	"minlength": 1
+      },
+      "view_path": { // The relative (to www_path) or absolute path to the view folder for this sub-realm.
+	"type":"string",
+	"minlength": 1
+      },
+      "partials_path": { // The relative (to view_path) or absolute path to the partials folder (by default assumed to be "./partials") for this sub-realm.
+	"type":"string",
+	"minlength": 1
+      },
+      "partials": { // List of partials to load. If ommitted, all files in the partials folder will be loaded.
+	"type": "array",
+	"items": {
+	  "type":"string",
+	  "minlength": 1
+	}
+      },
+      "enabled": { // If false, this realm won't be configured during server setup. NOTE: MUST be true for the root ("/") realm.
+	"type": "boolean"
+      },
+      "context": { // Context to use for the view templates.
+	"type":"object"
+      }
+    },
+    "required":[
+      "domain_name",
+      "www_path",
+      "view_path",
+      "enabled"
+    ]
+  };
+
+  // Configuration for REALMS (aka, sub-domains)
+  var CSUB_REALMS = {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "properties": {
+      "bundle_scripts":{
+	"type": "array",
+        "minItems": 1,
+        "items": {
+	  "type": "string"
+        }
+      },
+      "realms":{
+	"type": "array",
+	"minItems":1,
+	"items": {
+	  "type": "object"
+	}
+      }
+    }
+  };
+
+  // Configuration for the logging system
+  var CSUB_LOGGING = {
+    "type": "object",
+    "properties": {
+      "minLevel": ["integer", "string"],
+      "maxLevel": ["integer", "string"]
+    },
+    "require": [
+      "minLevel",
+      "maxLevel"
+    ]
+  };
+
+  // Configuration for the terminal access system.
+  var CSUB_TERMINAL = {
+    "type": "object",
+    "properties":{
+      "host": {
+        "type": "string"
+      },
+      "port": {
+        "type": "integer"
+      },
+      "maxConnections": {
+	"type": "integer",
+	"min": 1
+      },
+      "authCode":{
+	"type": "string",
+	"minLength": 1
+      },
+      "enabled": {
+	"type": "boolean"
+      }
+    },
+    "required": [
+      "host",
+      "port",
+      "maxConnections",
+      "authCode"
+    ]
+  };
+  
+  // -------------------------------------------------------------------------------------------
+  // Server.config.json Schema
+  // -------------------------------------------------------------------------------------------
   var CONFIG_SCHEMA = {
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
