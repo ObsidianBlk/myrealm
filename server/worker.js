@@ -50,31 +50,37 @@ module.exports = function(cluster, config){
   app.set('views', path.resolve((typeof(config.http.views) === 'string') ? config.http.views : 'views'));
   app.engine('html', hbs.__express);
 
-  // Loading template partials... if any.
-  if (config.partials instanceof Array){
-    var basePath = path.resolve((typeof(config.http.partials) === 'string') ? config.http.partials : 'views/partials');
-    config.partials.forEach(function(partial){
-      var ppath = path.join(basePath, '_' + partial + ".html");
-      try {
-	if (fs.statSync(ppath).isFile() === false){
+
+  function LoadPartials(partials, partialsPath){
+    if (partials instanceof Array){
+      var basePath = path.resolve((typeof(partialsPath) === 'string') ? partialsPath : 'views/partials');
+      partials.forEach(function(partial){
+	var ppath = path.join(basePath, '_' + partial + ".html");
+	try {
+	  if (fs.statSync(ppath).isFile() === false){
+	    ppath = null;
+	  }
+	} catch (e) {
+	  logWorker.debug("[WORKER %d] %s", cluster.worker.id, e.message);
 	  ppath = null;
 	}
-      } catch (e) {
-	logWorker.debug("[WORKER %d] %s", cluster.worker.id, e.message);
-	ppath = null;
-      }
-      if (ppath !== null){
-	logWorker.debug("%s | %s", partial, ppath);
-	hbs.registerPartial(partial, fs.readFileSync(ppath, 'utf8'));
-      } else {
-	logWorker.warning(
-	  "[WORKER %d] Cannot load partial. Path '%s' is not a file.",
-	  cluster.worker.id,
-	  path.join(basePath, '_' + partial + ".html")
-	);
-      }
-    });
+	if (ppath !== null){
+	  logWorker.debug("%s | %s", partial, ppath);
+	  hbs.registerPartial(partial, fs.readFileSync(ppath, 'utf8'));
+	} else {
+	  logWorker.warning(
+	    "[WORKER %d] Cannot load partial. Path '%s' is not a file.",
+	    cluster.worker.id,
+	    path.join(basePath, '_' + partial + ".html")
+	  );
+	}
+      });
+    }
   }
+  
+  // Loading template partials... if any.
+  LoadPartials(config.partials);
+  
   
   // Configuring server paths
   config.realms.forEach(function(realm){
