@@ -40,7 +40,7 @@ module.exports = (function(){
 	"type":"string",
 	"minlength": 1
       },
-      "view_path": { // The relative (to www_path) or absolute path to the view folder for this sub-realm.
+      "views_path": { // The relative (to www_path) or absolute path to the view folder for this sub-realm.
 	"type":"string",
 	"minlength": 1
       },
@@ -65,7 +65,7 @@ module.exports = (function(){
     "required":[
       "domain_name",
       "www_path",
-      "view_path",
+      "views_path",
       "enabled"
     ]
   };
@@ -82,14 +82,19 @@ module.exports = (function(){
 	  "type": "string"
         }
       },
-      "realms":{
+      "list":{
 	"type": "array",
 	"minItems":1,
 	"items": {
-	  "type": "object"
+	  "type": ["object", "string"],
+	  "minLength": 1
 	}
       }
-    }
+    },
+    "required":[
+      "bundle_scripts",
+      "list"
+    ]
   };
 
   // Configuration for the logging system
@@ -117,14 +122,10 @@ module.exports = (function(){
       },
       "maxConnections": {
 	"type": "integer",
-	"min": 1
+	"min": 0 // If 0, then terminal is considered disabled.
       },
       "authCode":{
-	"type": "string",
-	"minLength": 1
-      },
-      "enabled": {
-	"type": "boolean"
+	"type": "string"
       }
     },
     "required": [
@@ -157,108 +158,20 @@ module.exports = (function(){
 	"type": "integer",
 	"min": 1
       },
-      "terminal": {
-	"type": "object",
-	"properties":{
-	  "host": {
-            "type": "string"
-          },
-          "port": {
-            "type": "integer"
-          },
-	  "maxConnections": {
-	    "type": "integer",
-	    "min": 1
-	  },
-	  "authCode":{
-	    "type": "string",
-	    "minLength": 1
-	  },
-	  "enabled": {
-	    "type": "boolean"
-	  }
-	},
-	"required": [
-	  "host",
-	  "port",
-	  "maxConnections",
-	  "authCode"
-	]
+      "port":{
+	"type": "integer"
       },
-      "redis": {
-	"type": "object",
-	"properties": {
-          "host": {
-            "type": "string"
-          },
-          "port": {
-            "type": "integer"
-          },
-	  "connectionTimeout":{
-	    "type": "integer"
-	  },
-	  "serverkey":{
-	    "type": "string"
-	  }
-	},
-	"required": [
-          "host",
-          "port"
-	]
+      "terminal": { // If object, then refer to CSUB_TERMINAL schema. If string, a path to find the Terminal configuration JSON.
+	"type": ["object", "string"],
+	"minLength":1
       },
-      "http": {
-	"type": "object",
-	"properties": {
-          "port": {
-            "type": "integer"
-          },
-	  "www":{
-	    "type": "string",
-	    "minLength": 1
-	  },
-	  "views":{
-	    "type": "string",
-	    "minLength": 1
-	  },
-	  "partials":{
-	    "type": "string",
-	    "minLength": 1
-	  }
-	},
-	"required": [
-          "port"
-	]
+      "redis": { // If object, then refer to CSUB_REDIS schema. If string, a path to find the Redis configuration JSON.
+	"type": ["object", "string"],
+	"minLength":1
       },
-      "realms":{
-        "type": "array",
-        "minItems":1,
-        "items": {
-          "type": "object",
-          "properties": {
-            "subrealm": {
-              "type": "string"
-            },
-            "context": {
-              "type": "object"
-            },
-            "context_path": {
-              "type": "string",
-              "minLength": 1
-            },
-            "bundle_scripts":{
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "anyOf": [
-            {"required":["subrealm"]},
-            {"required":["subrealm", "context"]},
-            {"required":["subrealm", "context_path"]}
-          ]
-        }
+      "realms":{ // If object, then refer to CSUB_REALMS schema. If string, a path to find the Realms configuration JSON.
+        "type": ["object", "string"],
+	"minLength": 1
       },
       "logging": {
 	"type": "object",
@@ -273,15 +186,16 @@ module.exports = (function(){
       }
     },
     "required": [
+      "port",
       "secret",
       "redis",
-      "http",
       "realms"
     ]
   };
 
-  var DEFAULT_CONFIG_PATH = "server.config.json";
+  var DEFAULT_CONFIG_PATH = "./server.config.json";
   var path = require('path');
+  var fs = require('fs');
   var tv4 = require('tv4');
 
   // -------------------------------------------------------------------------------------------
@@ -309,40 +223,36 @@ module.exports = (function(){
     }
   }
 
+  // If configuration is invalid, throw a fit!
   if (config !== null && tv4.validate(config, CONFIG_SCHEMA) === false){
-    console.error("Server.config.json is invalid.\"" + tv4.error.message + "\"\nUsing default configuration.");
-    config = null;
+    throw new Error("Server.config.json is invalid.\"" + tv4.error.message + "\".");
   }
 
-  if (config === null){
-    config = {
-      version:"1.0.0",
-      processes:0,
-      redis:{
-	host:"localhost",
-	port:6379
-      },
-      http:{
-	port:3000
-      },
-      realms:[
-        {
-          subrealm:"",
-          context:{
-            title: "MyRealm VR",
-            description: "MyRealm VR Multiuser Environment."
-          }
-        }
-      ],
-      logging:{
-	minLevel:"debug",
-	maxLevel:"error"
-      }
-    };
-  }
-
+  // Setting defaults if not defined.
   if (typeof(config.logDomain) !== 'string'){
     config.logDomain = "MYREALM";
+  }
+
+  if (typeof(config.tokenExpiration) !== 'number'){
+    config.tokenExpiration = 900; // (in seconds) Approximately 15 minutes.
+  }
+
+  // ------------------------------------------------------------------------------
+  // Load REDIS config if string
+  // ------------------------------------------------------------------------------
+  if (typeof(config.redis) === 'string'){
+    var rpath = path.resolve(config.redis);
+    var stat = fs.lstatSync(rpath);
+    if (stat.isFile() === false){
+      throw new Error("Redis configuration path '" + rpath + "' missing or not a file.");
+    }
+    config.redis = require(rpath);
+  }
+  // ------------------------------------------------------------------------------
+  // Validate REDIS config.
+  // ------------------------------------------------------------------------------
+  if (tv4.validate(config.redis, CSUB_REDIS) === false){
+    throw new Error("REDIS config is invalid.\"" + tv4.error.message + "\".");
   }
 
   if (typeof(config.redis.connectionTimeout) !== 'number'){
@@ -353,25 +263,73 @@ module.exports = (function(){
     config.redis.serverkey = "";
   }
 
-  if (typeof(config.terminal) === 'undefined'){
-    config.terminal = {enabled: false};
-  }
-  // I know this looks redundant, but "enabled" isn't required by the schema... so I force it to exist. What? Set defaults you say?
-  if (config.terminal.enabled !== true){
-    config.terminal.enabled = false;
-  }
 
-  // Need to check the realms list to make sure the root sub-realm ("") actually exists!
-  var rootRealmFound = false;
-  for (var i=0; i < config.realms.length; i++){
-    if (config.realms[i].subrealm === ""){
-      rootRealmFound = true;
-      break;
+  // ------------------------------------------------------------------------------
+  // Load REALMS config if string
+  // ------------------------------------------------------------------------------
+  if (typeof(config.realms) === 'string'){
+    var rpath = path.resolve(config.realms);
+    var stat = fs.lstatSync(rpath);
+    if (stat.isFile() === false){
+      throw new Error("Realms configuration path '" + rpath + "' missing or not a file.");
+    }
+    config.realms = require(rpath);
+  }
+  // ------------------------------------------------------------------------------
+  // Validate REALMS config.
+  // ------------------------------------------------------------------------------
+  if (tv4.validate(config.realms, CSUB_REALMS) === false){
+    throw new Error("REALMS config is invalid.\"" + tv4.error.message + "\".");
+  }
+  // Now must load/validate actual realms :)
+  var rlist = config.realms.list;
+  for (var i=0; i < rlist.length; i++){
+    // Load REALM config if string
+    if (typeof(rlist[i]) === 'string'){
+      var rpath = path.resolve(rlist[i]);
+      var stat = fs.lstatSync(rpath);
+      if (stat.isFile() === false){
+	throw new Error("Realm configuration path '" + rpath + "' missing or not a file.");
+      }
+      rlist[i] = require(rpath);
+    }
+    // Validate Realm config
+    if (tv4.validate(rlist[i], CSUB_REALM) === false){
+      throw new Error("REALM config is invalid. \"" + tv4.error.message + "\".");
     }
   }
-  if (rootRealmFound === false){
-    console.error("WARNING: Required root sub-realm not defined!");
+
+
+  // ------------------------------------------------------------------------------
+  // Define/Load TERMINAL config if undefined/string
+  // ------------------------------------------------------------------------------
+  if (typeof(config.terminal) === 'undefined'){
+    config.terminal = { // A default, disabled terminal.
+      host: "",
+      port: 0,
+      maxConnections: 0,
+      authCode: ""
+    };
+  } else {
+    if (typeof(config.terminal) === 'string'){
+      var tpath = path.resolve(config.terminal);
+      var stat = fs.lstatSync(tpath);
+      if (stat.isFile() === false){
+	throw new Error("Terminal configuration path '" + tpath + "' missing or not a file.");
+      }
+      config.terminal = require(tpath);
+    }
+  }
+  // ------------------------------------------------------------------------------
+  // Validate Terminal config.
+  // ------------------------------------------------------------------------------
+  if (tv4.validate(config.terminal, CSUB_TERMINAL) === false){
+    throw new Error("TERMINAL config is invalid. \"" + tv4.error.message + "\".");
   }
 
+
+  // ------------------------------------------------------------------------------
+  // DONE! Return loaded/generated config!
+  // ------------------------------------------------------------------------------
   return config;
 })();

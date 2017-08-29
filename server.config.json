@@ -3,39 +3,39 @@
   "logDomain":"myrealm",
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
   "tokenExpiration": 60,
+  "port": 3000,
   "terminal":{
     "host":"127.0.0.1",
     "port":3010,
-    "maxConnections":2,
-    "authCode":"SUPER-SECRET-KEY-----CHANGE_ME!!!!",
-    "enabled":true
+    "maxConnections":0,
+    "authCode":"SUPER-SECRET-KEY-----CHANGE_ME!!!!"
   },
   "redis":{
     "host":"localhost",
     "port":6379,
     "serverkey":"MYREALM_SERVER"
   },
-  "http":{
-    "port":3000,
-    "www":"www",
-    "views":"views",
-    "partials":"views/partials"
-  },
-  "partials":[
-    "visitors"
-  ],
-  "realms":[
-    {
-      "subrealm":"",
-      "context":{
-        "title":"MyRealm Demonstration",
-        "description":"MyRealm VS Multi-User Environment."
-      },
-      "bundle_scripts":[
-        "vendor-bundle.js",
-        "myrealm-bundle.js"
-      ]
-    }
-  ]
+  "realms": {
+    "bundle_scripts":[
+      "vendor-bundle.js",
+      "myrealm-bundle.js"
+    ],
+    "list":[
+      {
+	"domain_name": "/",
+	"www_path": "../www",
+	"views_path": "../views",
+	"partials_path": "partials",
+	"partials":[
+	  "visitors"
+	],
+	"context":{
+	  "title":"MyRealm Demonstration",
+          "description":"MyRealm VS Multi-User Environment."
+	},
+	"enabled": true
+      }
+    ]
+  }
 }
 

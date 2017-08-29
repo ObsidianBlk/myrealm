@@ -47,64 +47,102 @@ module.exports = function(cluster, config){
   // Configure the View Engine to use handlebar templates.
   var hbs = require('hbs');
   app.set('view engine', 'html');
-  app.set('views', path.resolve((typeof(config.http.views) === 'string') ? config.http.views : 'views'));
+  //app.set('views', path.resolve((typeof(config.http.views) === 'string') ? config.http.views : 'views'));
   app.engine('html', hbs.__express);
 
 
-  function LoadPartials(partials, partialsPath){
-    if (partials instanceof Array){
-      var basePath = path.resolve((typeof(partialsPath) === 'string') ? partialsPath : 'views/partials');
+  function LoadPartials(root, domain, partials){
+    if (typeof(partials) === 'string'){
+      var ppath = path.normalize(path.resolve(path.join(root, '_' + partials + ".html")));
+      try {
+	fs.accessSync(ppath, fs.constants.F_OK | fs.constants.R_OK);
+      } catch (e) {
+	logWorker.warning("[WORKER %d] Partial file '%s' is missing or unreadable.", cluster.worker.id, ppath);
+	return;
+      }
+      var partial_name = ((domain !== "") ? domain + "_" : "") + partials;
+      hbs.registerPartial(partial_name, fs.readFileSync(ppath, 'utf8'));
+    } else if (partials instanceof Array){
       partials.forEach(function(partial){
-	var ppath = path.join(basePath, '_' + partial + ".html");
-	try {
-	  if (fs.statSync(ppath).isFile() === false){
-	    ppath = null;
-	  }
-	} catch (e) {
-	  logWorker.debug("[WORKER %d] %s", cluster.worker.id, e.message);
-	  ppath = null;
-	}
-	if (ppath !== null){
-	  logWorker.debug("%s | %s", partial, ppath);
-	  hbs.registerPartial(partial, fs.readFileSync(ppath, 'utf8'));
-	} else {
-	  logWorker.warning(
-	    "[WORKER %d] Cannot load partial. Path '%s' is not a file.",
-	    cluster.worker.id,
-	    path.join(basePath, '_' + partial + ".html")
-	  );
-	}
+	LoadPartials(root, domain, partial);
       });
     }
   }
-  
-  // Loading template partials... if any.
-  LoadPartials(config.partials);
-  
+
+  function CleanDomain(d, rep){
+    if (d === "/"){
+      return "";
+    }
+
+    var dom = d.replace('/[/\s]*/', rep);
+    if (dom.startsWith(rep) === true){
+      dom = dom.substr(1);
+    }
+    if (dom.endsWith(rep) === true){
+      dom = dom.substr(0, dom.length-1);
+    }
+    return dom;
+  }
   
   // Configuring server paths
-  config.realms.forEach(function(realm){
-    var template_file = (realm.subrealm === "") ? "index" : realm.subrealm;
-    var context = null;
-    try {
-      context = (realm.context) ? realm.context : require(realm.context_path);
-    } catch (e) {
-      // TODO: Should I cancel boot?
-      console.error("Failed to load Sub-Realm context '" + realm.context_path + "'");
-      context = {};
-    }
-    // Attach the bundle scripts, if any are defined, to the context.
-    if (realm.bundle_scripts){
-      context.bundle_scripts = realm.bundle_scripts;
+  config.realms.list.forEach(function(realm){
+    var www_path = realm.www_path;
+    if (www_path.substr(0, 1) !== "/"){ // Assume relative path.
+      www_path = path.normalize(path.resolve(path.join(__dirname, www_path)));
+    } else { // Treat as an absolute path.
+      www_path = path.normalize(path.resolve(www_path));
     }
     
-    app.get('/'+realm.subrealm, function(req, res){
+    var views_path = realm.views_path;
+    if (views_path.substring(0, 1) !== "/"){ // Assume relative path.
+      views_path = path.normalize(path.resolve(path.join(www_path, views_path)));
+    } else { // Treat as an absolute path.
+      views_path = path.normalize(path.resolve(views_path));
+    }
+    
+    var partials_path = (typeof(realm.partials_path) === 'string') ? realm.partials_path : "partials";
+    if (partials_path.substring(0, 1) !== "/"){
+      partials_path = path.normalize(path.resolve(path.join(views_path, partials_path)));
+    } else {
+      partials_path = path.normalize(path.resolve(partials_path));
+    }
+
+    if (typeof(realm.partials) !== 'undefined'){
+      LoadPartials(partials_path, CleanDomain(realm.domain_name, "_"), realm.partials);
+    }
+    
+    var template_file = path.join(views_path, "index");
+    var context = (typeof(realm.context) !== 'undefined') ? realm.context : {};
+
+    // Attach the bundle scripts.
+    if (typeof(context.bundle_scripts) === 'undefined'){
+      context.bundle_scripts = config.realms.bundle_scripts;
+    }
+
+    // Serve the primary view for this realm's domain
+    var domain = CleanDomain(realm.domain_name, "/");
+    app.get('/'+domain, function(req, res){
       res.render(template_file, context);
+    });
+
+    // serves all the static files for this realm's domain
+    var re = new RegExp("^" + ((domain === "") ? "/" : "(/" + domain + "/)") + "(.+)$", "g");
+    app.get(re, function(req, res){
+      logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
+      var resourcePath = path.resolve(path.join(www_path, req.params[0]));
+      fs.exists(resourcePath, function(exists){
+	if (exists){
+	  res.sendFile(resourcePath);
+	} else {
+	  logHTTP.debug("[WORKER %d] Requested file does not exist, '%s'", cluster.worker.id, resourcePath);
+	  res.status(404).send("Resource '" + req.params[0] + "' Not found.");
+	}
+      }); 
     });
   });
 
   // serves all the static files
-  app.get(/^(.+)$/, function(req, res){
+  /*app.get(/^(.+)$/, function(req, res){
     logHTTP.debug("[WORKER %d] Static file request: %o", cluster.worker.id, req.params);
     var resourcePath = path.resolve(((typeof(config.http.www) === 'string') ? config.http.www : "")  + req.params[0]);
     fs.exists(resourcePath, function(exists){
@@ -115,7 +153,7 @@ module.exports = function(cluster, config){
 	res.status(404).send("Resource '" + req.params[0] + "' Not found.");
       }
     }); 
-  });
+  });*/
 
 
 
@@ -152,7 +190,7 @@ module.exports = function(cluster, config){
   mediator.sockets.begin(server);
 
   // Start the HTTP server
-  logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.http.port);
-  server.listen(config.http.port);
+  logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.port);
+  server.listen(config.port);
 
 };

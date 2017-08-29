@@ -1,8 +1,15 @@
 
 
 var version = require('./version');
-var config = require("./config");
 var cluster = require('cluster');
+
+var config = null;
+try {
+  config = require("./config");
+} catch (e) {
+  console.error("[CONFIGURATION ERROR]: " + e.message);
+  process.exit(0);
+}
 
 if (cluster.isMaster){
   var Logger = require('./utils/logger')(config.logging);
@@ -21,7 +28,7 @@ if (cluster.isMaster){
   // -----------------------------------------------------------------------------
   // Setting up administration terminal if defined.
   // -----------------------------------------------------------------------------
-  if (config.terminal.enabled === true){
+  if (config.terminal.maxConnections > 0){
     log.info("NOTE: Terminal socket open.");
     log.info("------------------------------------------");
     var terminal = require('./utils/terminalsock')(
@@ -60,7 +67,7 @@ if (cluster.isMaster){
   // -----------------------------------------------------------------------------
   
 
-  if (config.processes <= 0){
+  if (typeof(config.processes) !== 'number' || config.processes <= 0){
     config.processes = numCPUs;
   } else if (config.processes > numCPUs){
     log.warning("Number of requested processes exceed number of CPUs on system.");
