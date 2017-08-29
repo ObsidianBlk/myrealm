@@ -1,8 +1,8 @@
 
 module.exports = function(config, r){
   var Promise = require('bluebird');
-  var Logger = require('../utils/logger')(config.logging);
-  var log = new Logger(config.logDomain + ":middleware:visitorInfo");
+  var Logger = require('../utils/logger')(config);
+  var log = new Logger("middleware:visitorInfo");
 
   return {
     update: function(ctx, next){

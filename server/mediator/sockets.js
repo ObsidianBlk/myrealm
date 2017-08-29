@@ -12,8 +12,8 @@ module.exports = function(workerid, emitter, r, config){
   var Crypto = require('crypto-js');
   var Middleware = require('../middleware/middleware');
   var CreateContext = require('./context');
-  var Logger = require('../utils/logger')(config.logging);
-  var logSocket = new Logger(config.logDomain + ":sockets");
+  var Logger = require('../utils/logger')(config);
+  var logSocket = new Logger("sockets");
 
   // This will hold the socket server that this whole module runs on!
   var sserver = null;

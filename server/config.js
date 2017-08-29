@@ -175,14 +175,23 @@ module.exports = (function(){
       },
       "logging": {
 	"type": "object",
-	"properties": {
-	  "minLevel": ["integer", "string"],
-	  "maxLevel": ["integer", "string"]
-	},
-	"require": [
-	  "minLevel",
-	  "maxLevel"
-	]
+	"properties":{
+	  "info_enabled":{
+	    "type":"boolean"
+	  },
+	  "error_enabled":{
+	    "type":"boolean"
+	  },
+	  "warning_enabled":{
+	    "type":"boolean"
+	  },
+	  "debug_enabled":{
+	    "type":"boolean"
+	  },
+	  "all":{
+	    "type":"boolean"
+	  }
+	}
       }
     },
     "required": [
@@ -327,6 +336,9 @@ module.exports = (function(){
     throw new Error("TERMINAL config is invalid. \"" + tv4.error.message + "\".");
   }
 
+  // ------------------------------------------------------------------------------
+  // Validate Logging config if given!
+  // ------------------------------------------------------------------------------
 
   // ------------------------------------------------------------------------------
   // DONE! Return loaded/generated config!

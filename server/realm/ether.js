@@ -1,8 +1,8 @@
 
 module.exports = function(m, r, config){
   var Promise = require('bluebird');
-  var Logger = require('../utils/logger')(config.logging);
-  var logEther = new Logger(config.logDomain + ":ether");
+  var Logger = require('../utils/logger')(config);
+  var logEther = new Logger("ether");
   var workerid = m.sockets.workerid;
 
   //var mwValidation = require('../middleware/validation')(config, r);

@@ -12,8 +12,8 @@ try {
 }
 
 if (cluster.isMaster){
-  var Logger = require('./utils/logger')(config.logging);
-  var log = new Logger(config.logDomain + ":master");
+  var Logger = require('./utils/logger')(config);
+  var log = new Logger("master");
   var numCPUs = require('os').cpus().length;
   var activeWorkers = 0;
   var keepWorkersAlive = true;

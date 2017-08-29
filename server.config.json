@@ -36,6 +36,9 @@
 	"enabled": true
       }
     ]
+  },
+  "logging":{
+    "all":true
   }
 }
 

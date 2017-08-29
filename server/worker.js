@@ -6,9 +6,9 @@ module.exports = function(cluster, config){
 
   // -------------------------------------------
   // -- Setting up logging
-  var Logger = require('./utils/logger')(config.logging);
-  var logWorker = new Logger(config.logDomain + ":worker");
-  var logHTTP = new Logger(config.logDomain + ":http");
+  var Logger = require('./utils/logger')(config);
+  var logWorker = new Logger("worker");
+  var logHTTP = new Logger("http");
   
 
   logWorker.info("Started Worker %d", cluster.worker.id);

@@ -2,8 +2,8 @@ module.exports = function(config, r){
   //var jwt = require('jsonwebtoken');
   var Promise = require('bluebird');
   var Crypto = require('crypto-js');
-  var Logger = require('../utils/logger')(config.logging);
-  var log = new Logger(config.logDomain + ":middleware:hmac");
+  var Logger = require('../utils/logger')(config);
+  var log = new Logger("middleware:hmac");
 
 
   return {

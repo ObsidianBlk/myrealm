@@ -1,8 +1,8 @@
 module.exports = function(config, r){
   var jwt = require('jsonwebtoken');
   var Promise = require('bluebird');
-  var Logger = require('../utils/logger')(config.logging);
-  var log = new Logger(config.logDomain + ":middleware:tokenize");
+  var Logger = require('../utils/logger')(config);
+  var log = new Logger("middleware:tokenize");
 
   var tokenExpirationTime = (config.tokenExpiration) ? config.tokenExpiration : 900; // Default is 900 seconds (15 minutes)
 

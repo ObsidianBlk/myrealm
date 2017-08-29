@@ -4,8 +4,8 @@
 */
 module.exports = function(workerid, config){
   var moment = require('moment');
-  var Logger = require('./logger')(config.logging);
-  var log = new Logger(config.logDomain + ":redis");
+  var Logger = require('./logger')(config);
+  var log = new Logger("redis");
   
   var r = {};
   var SUB_Ready = false;

@@ -2,8 +2,8 @@ module.exports = function(config, r){
   //var jwt = require('jsonwebtoken');
   var Promise = require('bluebird');
   var shortid = require('shortid');
-  var Logger = require('../utils/logger')(config.logging);
-  var log = new Logger(config.logDomain + ":middleware:connection");
+  var Logger = require('../utils/logger')(config);
+  var log = new Logger("middleware:connection");
 
   function GenerateVisitorID(attempts){
     return new Promise(function(resolve, reject){
