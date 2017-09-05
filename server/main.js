@@ -17,6 +17,7 @@ if (cluster.isMaster){
   var numCPUs = require('os').cpus().length;
   var activeWorkers = 0;
   var keepWorkersAlive = true;
+  var serverPrepared = false;
 
   version('.').then(function(ver){
     log.info("------------------------------------------");
@@ -44,7 +45,7 @@ if (cluster.isMaster){
       }
       if (typeof(evt.data.worker) === 'number'){
 	if (evt.data.worker in cluster.workers){
-	  cluster.workers[evt.data.worker].send({command:"terminate"});
+	  cluster.workers[evt.data.worker].send({type:"terminate"});
 	  evt.client.write(JSON.stringify({
 	    status: "success",
 	    message: "Worker " + evt.data.worker + " has been terminated."
@@ -73,12 +74,20 @@ if (cluster.isMaster){
     log.warning("Number of requested processes exceed number of CPUs on system.");
   }
 
+
   cluster.on("fork", function(worker){
     log.info("Worker %d forked.", worker.id);
   });
 
   cluster.on("online", function(worker){
     log.info("Worker %d online", worker.id);
+    if (serverPrepared === false){
+      log.debug("Requesting the worker to prepare the server.");
+      worker.send({type:"prepareserver"});
+    } else {
+      log.debug("Requesting the worker to start the server.");
+      worker.send({type:"startserver"});
+    }
   });
 
   cluster.on("listening", function(worker, addr){
@@ -87,6 +96,30 @@ if (cluster.isMaster){
 
   cluster.on("disconnect", function(worker){
     log.info("Worker %d has disconnected.", worker.id);
+  });
+
+  cluster.on("message", function(worker, msg, handle){
+    if (arguments.length <= 2){ // Just in case this is being run on Node < v6.0
+      handle = msg;
+      msg = worker;
+      worker = undefined;
+    }
+
+    if (typeof(msg.type) !== 'string' || typeof(msg.wid) !== 'number'){
+      log.error("Worker sent malformed message.");
+      return;
+    }
+
+    if (msg.type === "serverprepared" && serverPrepared === false){
+      log.debug("Worker %d has finished preparing the server. Telling the worker to start the server.", msg.wid);
+      serverPrepared = true;
+      cluster.workers[msg.wid].send({type:"startserver"});
+      // Starting the remaining workers... if any...
+      for (var i=activeWorkers; i < config.processes; i++){
+	cluster.fork();
+	activeWorkers++;
+      }
+    }
   });
 
   // ---
@@ -143,10 +176,14 @@ if (cluster.isMaster){
   process.on("SIGTERM", HandleClose);
   process.on("SIGINT", HandleClose);
 
-  for (var i=0; i < config.processes; i++){
+  // Starting the first worker (this worker will "prepare" the server/databases for all of the other servers).
+  activeWorkers++;
+  cluster.fork();
+  
+  /*for (var i=0; i < config.processes; i++){
     cluster.fork();
     activeWorkers++;
-  }
+  }*/
   
 } else if(cluster.isWorker){
   require('./worker')(cluster, config);

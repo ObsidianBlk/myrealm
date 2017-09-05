@@ -38,6 +38,8 @@ module.exports = function(cluster, config){
   // Direct client/server communications
   mediator.sockets = require('./mediator/sockets')(cluster.worker.id, mediator.emitter, r, config);
 
+  var server_running = false;
+
   // Loading the Plugins...
   // TODO: Break the hardcoding...
   require('./realm/ether')(mediator, r, config);
@@ -176,21 +178,46 @@ module.exports = function(cluster, config){
   
   cluster.worker.on("message", function(msg){
     if (exiting === false){
-      if (msg.command){
-	if (msg.command === "terminate"){
-	  ExitWorker();
+      if (typeof(msg.type) !== 'string'){
+	logWorker.error("Master sent invalid message.");
+      }
+      
+      switch(msg.type){
+      case "terminate":
+	ExitWorker();
+	break;
+      case "prepareserver":
+	if (server_running === false){
+	  logWorker.debug("Been asked to prepare the server...");
+	  mediator.emitter.emit("prepareserver")
+	    .then(function(){
+	      logWorker.debug("Prepared. Letting Main know!");
+	      cluster.worker.send({type:"serverprepared", wid:cluster.worker.id});
+	    });
 	}
+	break;
+      case "startserver":
+	if (server_running === false){
+	  StartServer();
+	}
+	break;
+      }
+      if (msg.command === "terminate"){
+	ExitWorker();
       }
     }
   });
   // ---------------------------------------------------------------
   
 
-  // Connects the web sockets server to the http server.
-  mediator.sockets.begin(server);
+  function StartServer(){
+    server_running = true;
+    // Connects the web sockets server to the http server.
+    mediator.sockets.begin(server);
 
-  // Start the HTTP server
-  logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.port);
-  server.listen(config.port);
+    // Start the HTTP server
+    logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.port);
+    server.listen(config.port);
+  }
 
 };
