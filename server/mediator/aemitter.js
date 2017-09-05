@@ -112,31 +112,33 @@ module.exports = (function(){
      * @method emit
      * @param {string} name - The name of the event.
      * @param {...*} * - Any number of additional arguments to be passed to the listeners.
-     * @returns {Promise}
+     * @returns {Promise} - Returned promise will complete when all event callbacks have completed.
      */
     this.emit = function(){
       if (arguments.length >= 1){
 	var name = arguments[0];
 	if (name in EVENTS){
 	  var args = (arguments.length > 1) ? Array.prototype.slice.call(arguments, 1) : null;
-	  var events = EVENTS[name].slice();
+	  var promlist = [];
+	  // NOTE: I'm cheating the use of "filter" here. I'm wrapping each event function in a promise and storing that in the
+	  // promlist variable, THEN checking the filter condition... A "two birds with one stone" sort of thing. Enjoy!
 	  EVENTS[name] = EVENTS[name].filter(function(e){
+	    promlist.push(new Promise(function(resolve, reject){
+	      try{
+		e.func.apply(e.owner, args);
+	      } catch (e) {
+		reject(e);
+	      }
+	      resolve();
+	    }));
 	    return (e.once === false);
 	  });
-	  
-	  return new Promise(function(resolve, reject){
-	    try{
-	      for (var e=0; e < events.length; e++){
-		events[e].func.apply(events[e].owner, args);
-	      }
-	    } catch (e) {
-	      reject(e);
-	    }
-	    resolve();
-	  });
+
+	  // Ok... now we have out list of promises... let's return a promise waiting for all others to complete :)
+	  return Promise.all(promlist); // This allows the user to wait for all events to complete if they choose.
 	}
       }
-      return Promise.resolve(); // Either no event name was given, or the given event name has no listeners.
+      return Promise.resolve();
     };
     /**
      * Shorthand for the emit() method.
