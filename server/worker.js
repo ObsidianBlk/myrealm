@@ -39,6 +39,7 @@ module.exports = function(cluster, config){
   mediator.sockets = require('./mediator/sockets')(cluster.worker.id, mediator.emitter, r, config);
 
   var server_running = false;
+  var preparing_server = false;
 
   // Loading the Plugins...
   // TODO: Break the hardcoding...
@@ -187,17 +188,27 @@ module.exports = function(cluster, config){
 	ExitWorker();
 	break;
       case "prepareserver":
-	if (server_running === false){
+	if (server_running === false && preparing_server === false){
+	  preparing_server = true;
 	  logWorker.debug("Been asked to prepare the server...");
-	  mediator.emitter.emit("prepareserver")
-	    .then(function(){
-	      logWorker.debug("Prepared. Letting Main know!");
-	      cluster.worker.send({type:"serverprepared", wid:cluster.worker.id});
-	    });
+	  r.onReady().then(function(ready){
+	    if (ready === true){
+	      mediator.emitter.emit("prepareserver")
+		.then(function(){
+		  logWorker.debug("Prepared. Letting Main know!");
+		  preparing_server = false;
+		  cluster.worker.send({type:"serverprepared", wid:cluster.worker.id});
+		});
+	    } else {
+	      logWorker.warning("Connection to REDIS database has timed out.");
+	      preparing_server = false;
+	      cluster.worker.send({type:"prepfailed", wid:cluster.worker.id});
+	    }
+	  });
 	}
 	break;
       case "startserver":
-	if (server_running === false){
+	if (server_running === false && preparing_server === false){
 	  StartServer();
 	}
 	break;
@@ -212,12 +223,21 @@ module.exports = function(cluster, config){
 
   function StartServer(){
     server_running = true;
-    // Connects the web sockets server to the http server.
-    mediator.sockets.begin(server);
 
-    // Start the HTTP server
-    logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.port);
-    server.listen(config.port);
+    r.onReady().then(function(ready){
+      if (ready === true){
+	// Connects the web sockets server to the http server.
+	mediator.sockets.begin(server);
+
+	// Start the HTTP server
+	logHTTP.info("[WORKER %d] Starting server on port %s", cluster.worker.id, config.port);
+	server.listen(config.port);
+      } else {
+	logWorker.warning("Connection to REDIS database has timed out.");
+	server_running = false;
+	cluster.worker.send({type:"startfailed", wid:cluster.worker.id});
+      }
+    });
   }
 
 };

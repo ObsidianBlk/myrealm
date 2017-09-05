@@ -110,15 +110,31 @@ if (cluster.isMaster){
       return;
     }
 
-    if (msg.type === "serverprepared" && serverPrepared === false){
-      log.debug("Worker %d has finished preparing the server. Telling the worker to start the server.", msg.wid);
-      serverPrepared = true;
-      cluster.workers[msg.wid].send({type:"startserver"});
-      // Starting the remaining workers... if any...
-      for (var i=activeWorkers; i < config.processes; i++){
-	cluster.fork();
-	activeWorkers++;
+    switch(msg.type){
+    case "serverprepared":
+      if (serverPrepared === false){
+	log.debug("Worker %d has finished preparing the server. Telling the worker to start the server.", msg.wid);
+	serverPrepared = true;
+	cluster.workers[msg.wid].send({type:"startserver"});
+	// Starting the remaining workers... if any...
+	for (var i=activeWorkers; i < config.processes; i++){
+	  cluster.fork();
+	  activeWorkers++;
+	}
       }
+      break;
+
+    case "prepfailed":
+      if (serverPrepared === false){
+	log.debug("Worker %d failed to prepare server before timeout.", msg.wid);
+	cluster.workers[msg.wid].send({type:"terminate"});
+      }
+      break;
+
+    case "startfailed":
+      log.debug("Worker %d failed to start server before timeout.", msg.wid);
+      cluster.workers[msg.wid].send({type:"terminate"});
+      break;
     }
   });
 

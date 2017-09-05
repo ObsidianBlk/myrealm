@@ -3,6 +3,7 @@
   A simple module to compartmentalize redis pub/sub connections. 
 */
 module.exports = function(workerid, config){
+  var Promise = require('bluebird');
   var moment = require('moment');
   var Logger = require('./logger')(config);
   var log = new Logger("redis");
@@ -14,9 +15,12 @@ module.exports = function(workerid, config){
   var PUB_Ready = false;
   var PUB_Reconnection_Time = null;
 
+  var readyTimeout = 0; // Number of seconds... If set to zero (default) there is no timeout!
+  var readyCheckInterval = 100; // Number in milliseconds.
+
   Object.defineProperties(r, {
     "ready":{
-      get:function(){return SUB_Ready && PUB_Ready;}
+      get:function(){return (SUB_Ready === true && PUB_Ready === true);}
     },
 
     "reconnecting":{
@@ -40,12 +44,34 @@ module.exports = function(workerid, config){
     }
   });
 
+  // Returns a promise that will wait for both PUB and SUB connections to be ready.
+  // The promise will "time out" after 5 minutes with a value of false.
+  r.onReady = function(){
+    var started = moment();
+    return new Promise(function(resolve, reject){
+      var Check = function(){
+	if (SUB_Ready === true && PUB_Ready === true){
+	  resolve(true);
+	} else {
+	  var d = moment().diff(started);
+	  if (readyTimeout <= 0 || d < readyTimeout*1000){
+	    setTimeout(Check, readyCheckInterval);
+	  } else {
+	    resolve(false);
+	  }
+	}
+      };
+
+      Check();
+    });
+  };
+
   // Helper function for redis key generation.
   r.Key = function(){
     return config.redis.serverkey + ":" + Array.prototype.slice.call(arguments).join(':');
   };
 
-  
+
   r.Redis = require('ioredis');
 
   /* ---------------------------------------------------------------------------------------
