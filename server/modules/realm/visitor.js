@@ -22,7 +22,7 @@ module.exports = function(m, r, config){
   // ----------------------------------------------------------------------
   // Work Functions
   // ----------------------------------------------------------------------
-  var fUpdatePosition = m.requester.requestFunc("world.updatePosition");
+  //var fUpdatePosition = m.requester.requestFunc("world.updatePosition");
 
   function HMGetResultTransformer(result){
     if (Array.isArray(result) === true){
