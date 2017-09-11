@@ -4,6 +4,12 @@
   "secret":"Secret-key-to-sign-jwt-tokens--CHANGE-ME",
   "tokenExpiration": 60,
   "port": 3000,
+  "modules": {
+    "mod_path": "modules",
+    "mods": [
+      "realm"
+    ]
+  },
   "terminal":{
     "host":"127.0.0.1",
     "port":3010,
@@ -31,7 +37,7 @@
 	],
 	"context":{
 	  "title":"MyRealm Demonstration",
-          "description":"MyRealm VS Multi-User Environment."
+          "description":"MyRealm VR Multi-User Environment."
 	},
 	"enabled": true
       }

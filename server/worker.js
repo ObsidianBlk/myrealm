@@ -42,9 +42,23 @@ module.exports = function(cluster, config){
   var preparing_server = false;
 
   // Loading the Plugins...
-  // TODO: Break the hardcoding...
-  require('./realm/ether')(mediator, r, config);
-  require('./realm/visitor')(mediator, r, config);
+  if (typeof(config.modules) !== 'undefined'){
+    var base_path = (typeof(config.modules.mod_path) === 'string') ? config.modules.mod_path : "modules";
+    if (base_path.substring(0, 1) !== path.sep){
+      base_path = path.join(__dirname, base_path);
+    }
+    config.modules.mods.forEach(function(mod){
+      var mpath = path.normalize(path.join(base_path, mod));
+      try {
+	logWorker.debug("[WORKER %d] Loading module '%s'.", cluster.worker.id, mpath);
+	require(mpath)(mediator, r, config);
+      } catch (e) {
+	logWorker.warning("[WORKER %d] Failed to load module '%s': %s", cluster.worker.id, mpath, e.message);
+      }
+    });
+  }
+  //require('./realm/ether')(mediator, r, config);
+  //require('./realm/visitor')(mediator, r, config);
 
 
   // Configure the View Engine to use handlebar templates.

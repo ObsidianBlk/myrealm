@@ -135,6 +135,24 @@ module.exports = (function(){
       "authCode"
     ]
   };
+
+  var CSUB_MODULES = {
+    "type": "object",
+    "properties": {
+      "mod_path":{
+	"type": "string",
+	"minLength": 1
+      },
+      "mods":{
+	"type": "array",
+	"minItems":1,
+	"items": {
+	  "type": "string",
+	  "minLength": 1
+	}
+      }
+    }
+  };
   
   // -------------------------------------------------------------------------------------------
   // Server.config.json Schema
@@ -160,6 +178,10 @@ module.exports = (function(){
       },
       "port":{
 	"type": "integer"
+      },
+      "modules": { // If object, then refer to CSUB_MODULES schema. If string, a path to find the Modules configuration JSON.
+	"type": ["object", "string"],
+	"minLength": 1
       },
       "terminal": { // If object, then refer to CSUB_TERMINAL schema. If string, a path to find the Terminal configuration JSON.
 	"type": ["object", "string"],
@@ -337,9 +359,48 @@ module.exports = (function(){
   }
 
   // ------------------------------------------------------------------------------
-  // Validate Logging config if given!
+  // Load Modules config if given!
   // ------------------------------------------------------------------------------
+  if (typeof(config.modules) !== 'undefined'){
+    if (typeof(config.modules) === 'string'){
+      var mpath = path.resolve(config.terminal);
+      var stat = fs.lstatSync(lpath);
+      if (stat.isFile() === false){
+	throw new Error("Modules configuration path '" + mpath + "' missing or not a file.");
+      }
+      config.modules = require(mpath);
 
+      // ------------------------------------------------------------------------------
+      // Validate Modules config if given!
+      // ------------------------------------------------------------------------------
+      if (tv4.validate(config.modules, CSUB_MODULES) === false){
+	throw new Error("MODULES config is invalid. \"" + tv4.error.message + "\".");
+      }
+    }
+  }
+  
+  // ------------------------------------------------------------------------------
+  // Load Logging config if given!
+  // ------------------------------------------------------------------------------
+  if (typeof(config.logging) !== 'undefined'){
+    if (typeof(config.logging) === 'string'){
+      var lpath = path.resolve(config.terminal);
+      var stat = fs.lstatSync(lpath);
+      if (stat.isFile() === false){
+	throw new Error("Logging configuration path '" + lpath + "' missing or not a file.");
+      }
+      config.logging = require(lpath);
+
+      // ------------------------------------------------------------------------------
+      // Validate Logging config if given!
+      // ------------------------------------------------------------------------------
+      if (tv4.validate(config.logging, CSUB_LOGGING) === false){
+	throw new Error("LOGGING config is invalid. \"" + tv4.error.message + "\".");
+      }
+    }
+  }
+
+  
   // ------------------------------------------------------------------------------
   // DONE! Return loaded/generated config!
   // ------------------------------------------------------------------------------

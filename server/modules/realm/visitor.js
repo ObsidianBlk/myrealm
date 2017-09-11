@@ -2,13 +2,13 @@
 module.exports = function(m, r, config){
   var Promise = require('bluebird');
   var THREE = require('three');
-  var Logger = require('../utils/logger')(config);
+  var Logger = require('../../utils/logger')(config);
   var log = new Logger("visitor");
   var workerid = m.sockets.workerid;
 
   //var mwValidation = require('../middleware/validation')(config, r);
-  var mwTokenize = require('../middleware/tokenize')(config, r);
-  var mwHMAC = require('../middleware/hmac')(config, r);
+  var mwTokenize = require('../../middleware/tokenize')(config, r);
+  var mwHMAC = require('../../middleware/hmac')(config, r);
   
   var NS_TELEMETRY = "visitor:telemetry";
 
