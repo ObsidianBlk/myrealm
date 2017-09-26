@@ -12,9 +12,10 @@ Different items on the roadmap may have different symbols. Here's the key for yo
 ## 0.0.9 - Nano Stumbling Indri
 1. **[`*`]** Start naming versions. One word for each number of the format `<Adjective> <Verb> <Animal>` and the word only changes when the letter does.
 * _That was easy!_
-2. **[ ]** Basic client visitor interface (UI) for Desktop and non-VR mobile.
-3. **[ ]** Allow visitor to change their visible name.
-4. **[ ]** Design a better visitor avatar.
-5. **[ ]** Implement simple visitor messaging system.
-6. **[ ]** Place visitors into "Sub Ethers" (instances/rooms)
-7. **[ ]** Allow visitors to change their Sub Ether or create a "private" one.
+2. **[ ]** Reactor Realm/visitor system for cleaner communications.
+3. **[ ]** Basic client visitor interface (UI) for Desktop and non-VR mobile.
+4. **[ ]** Allow visitor to change their visible name.
+5. **[ ]** Design a better visitor avatar.
+6. **[ ]** Implement simple visitor messaging system.
+7. **[ ]** Place visitors into "Sub Ethers" (instances/rooms)
+8. **[ ]** Allow visitors to change their Sub Ether or create a "private" one.

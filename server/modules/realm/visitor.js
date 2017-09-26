@@ -10,7 +10,9 @@ module.exports = function(m, r, config){
   var mwTokenize = require('../../middleware/tokenize')(config, r);
   var mwHMAC = require('../../middleware/hmac')(config, r);
   
-  var NS_TELEMETRY = "visitor:telemetry";
+  var KEY_TPOSITION = "visitor:tposition";
+  var KEY_TROTATION = "visitor:trotation";
+  var KEY_TFACING = "visitor:tfacing";
 
 
   // [[number, number, number, number], ...]
@@ -40,16 +42,66 @@ module.exports = function(m, r, config){
     var r = Math.random()*SPAWN_ZONES[zone][3];
     var angle = Math.random()*(2*Math.PI);
     return {
-      position_x: SPAWN_ZONES[zone][0] + (r*Math.sin(angle)),
-      position_z: SPAWN_ZONES[zone][2] + (r*Math.cos(angle)),
-      position_y: SPAWN_ZONES[zone][1]
+      position:{
+	x: SPAWN_ZONES[zone][0] + (r*Math.sin(angle)),
+	z: SPAWN_ZONES[zone][2] + (r*Math.cos(angle)),
+	y: SPAWN_ZONES[zone][1]
+      }
     };
   }
   
 
-  function getTelemetry(id, persist){
-    persist = (persist === true);
+  function getTelemetry(id, telem_name){
     return new Promise(function(resolve, reject){
+      telem_name = (typeof(telem_name) === 'string') ? telem_name : null;
+      var m = r.pub.multi();
+      if (telem_name === null){
+	m.hgetall(r.Key(KEY_TPOSITION, id));
+	m.hgetall(r.Key(KEY_TFACING, id));
+	m.hgetall(r.Key(KEY_TROTATION, id));
+      } else {
+	switch (telem_name){
+	case "position":
+	  m.hgetall(r.Key(KEY_TPOSITION, id));
+	  break;
+	case "rotation":
+	  m.hgetall(r.Key(KEY_TROTATION, id));
+	  break;
+	case "facing":
+	  m.hgetall(r.Key(KEY_TFACING, id));
+	  break;
+	}
+      }
+      m.exec().then(function(res){
+	var otype = typeof({});
+	var telem = {};
+	if (telem_name === null){
+	  log.debug(res);
+	  if (res[0][0] !== null){
+	    telem.position = res[0][1];
+	  }
+	  if (res[1][0] !== null){
+	    telem.facing = res[1][1];
+	  }
+	  if (res[2][0] !== null){
+	    telem.rotation = res[2][1];
+	  }
+	  if (telem.hasOwnProperty("position") === false &&
+	      telem.hasOwnProperty("rotation") === false &&
+	      telem.hasOwnProperty("facing") === false){
+	    telem = null;
+	  }
+	} else {
+	  if (res[0][0] !== null){
+	    telem[telem_name] = res[0][1];
+	  } else {
+	    telem = null;
+	  }
+	}
+	resolve(telem);
+      });
+    });
+    /*return new Promise(function(resolve, reject){
       var kTelemetry = r.Key(NS_TELEMETRY, id);
       r.pub.ttl(kTelemetry).then(function(res){
 	if (res === -1 || (res > 0 && persist === false)){ // No Expiration or, get the data while we can.
@@ -66,9 +118,10 @@ module.exports = function(m, r, config){
 	  resolve(null);
 	}
       });
-    });
+    });*/
   }
 
+  /*
   function TelemetryDataBuilder(data, propList){
     var o = {};
     propList.forEach(function(prop){
@@ -78,10 +131,90 @@ module.exports = function(m, r, config){
     });
     return o;
   }
+  */
+
+  function isOneOfType(){
+    if (arguments.length > 0){
+      var t = typeof(arguments[0]);
+      for (var i=1; i < arguments.length; i++){
+	if (t === arguments[i]){return true;}
+      }
+    }
+    return false;
+  }
+
+  function TelemetryDataBuilder(data, prop){
+    prop = (typeof(prop) === "string") ? prop : null;
+    var o = {};
+    var Extract = function(p, _in, _out){
+      if (_in.hasOwnProperty(p) === true){
+	log.debug("Has Property!");
+	if (isOneOfType(_in[p].x, "number", "string") === true &&
+	    isOneOfType(_in[p].y, "number", "string") === true &&
+	    isOneOfType(_in[p].z, "number", "string") === true){
+	  log.debug("Has X,Y,Z");
+	  if (_out.hasOwnProperty(p) === false){
+	    _out[p] = {};
+	  }
+	  _out[p].x = Number(_in[p].x);
+	  _out[p].y = Number(_in[p].y);
+	  _out[p].z = Number(_in[p].z);
+	}
+      }
+    };
+
+    if (prop === null){
+      Extract("position", data, o);
+      Extract("rotation", data, o);
+      Extract("facing", data, o);
+    } else {
+      Extract(prop, data, o);
+    }
+    return (o.hasOwnProperty("position") || o.hasOwnProperty("rotation") || o.hasOwnProperty("facing")) ? o : null;
+  }
+
+  function setSubTelemetry(id, telem_name, data){
+    return new Promise(function(resolve, reject){
+      var tdat = TelemetryDataBuilder(data, telem_name);
+      if (tdat !== null){
+	switch(telem_name){
+	case "position":
+	  return r.pub.hmset(r.Key(KEY_TPOSITION, id), tdat.position);
+	  break;
+
+	case "rotation":
+	  return r.pub.hmset(r.Key(KEY_TROTATION, id), tdat.rotation);
+	  break;
+
+	case "facing":
+	  return r.pub.hmset(r.Key(KEY_TFACING, id), tdat.facing);
+	  break;
+	}
+      }
+      return Promise.resolve();
+    });
+  }
 
   function setTelemetry(id, data, persist){
-    persist = (persist === true);
     return new Promise(function(resolve, reject){
+      var tdat = TelemetryDataBuilder(data);
+      if (tdat !== null){
+	var m = r.pub.multi();
+	if (tdat.hasOwnProperty("position") === true){
+	  m.hmset(r.Key(KEY_TPOSITION, id), tdat.position);
+	}
+	if (tdat.hasOwnProperty("rotation") === true){
+	  m.hmset(r.Key(KEY_TROTATION, id), tdat.rotation);
+	}
+	if (tdat.hasOwnProperty("facing") === true){
+	  m.hmset(r.Key(KEY_TFACING, id), tdat.facing);
+	}
+	resolve(m.exec());
+      } else {
+	reject(new Error("No telemetry data."));
+      }
+    });
+    /*return new Promise(function(resolve, reject){
       var tdat = TelemetryDataBuilder(data, [
 	"position_x", "position_y", "position_z",
 	"rotation_x", "rotation_y", "rotation_z",
@@ -102,15 +235,30 @@ module.exports = function(m, r, config){
       } else {
 	reject(new Error("No telemetry data."));
       }
-    });
+    });*/
+  }
+
+  function persistTelemetry(id){
+    return r.pub.multi()
+      .persist(r.Key(KEY_TPOSITION, id))
+      .persist(r.Key(KEY_TROTATION, id))
+      .persist(r.Key(KEY_TFACING, id))
+      .exec();
   }
 
   function clearTelemetry(id, timeout){
-    var kTelemetry = r.Key(NS_TELEMETRY, id);
     if (typeof(timeout) === 'number' && timeout > 0){
-      r.pub.expire(kTelemetry, timeout);
+      r.pub.multi()
+	.expire(r.Key(KEY_TPOSITION, id), timeout)
+	.expire(r.Key(KEY_TROTATION, id), timeout)
+	.expire(r.Key(KEY_TFACING, id), timeout)
+	.exec();
     } else {
-      r.pub.del(kTelemetry);
+      r.pub.multi()
+	.del(r.Key(KEY_TPOSITION, id))
+	.del(r.Key(KEY_TROTATION, id))
+	.del(r.Key(KEY_TFACING, id))
+	.exec();
     }
   }
 
@@ -140,6 +288,9 @@ module.exports = function(m, r, config){
       });
     });
   }
+
+
+  // TODO: Need to refactor code below to the changes above... YAY!
   
   // ----------------------------------------------------------------------
   // Direct Socket Client Request!
@@ -149,27 +300,27 @@ module.exports = function(m, r, config){
     mwTokenize.getToken,
     mwHMAC.verifyHMAC,
     function(ctx, next){
-      getTelemetry(ctx.id).then(function(result){
-	var data = TelemetryDataBuilder(ctx.request.data, [
-	  "position_dx", "position_dy", "position_dz"
-	]);
-	if (data.hasOwnProperty("position_dx") === false ||
-	    data.hasOwnProperty("position_dy") === false ||
-	    data.hasOwnProperty("position_dz") === false){
-	  ctx.error("Some or all positional deltas missing.");
-	  next();
-	} else {
-	  // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
-	  result.position_x = ((result.position_x !== null) ? Number(result.position_x) : 0) +  data.position_dx;
-	  result.position_y = ((result.position_y !== null) ? Number(result.position_y) : 0) +  data.position_dy;
-	  result.position_z = ((result.position_z !== null) ? Number(result.position_z) : 0) +  data.position_dz;
-	  setTelemetry(ctx.id, result).then(function(){
-	    var resp = ctx.response;
-	    result.visitor_id = ctx.id;
-	    resp.type = "telemetry";
-	    resp.data = result;
+      getTelemetry(ctx.id, "position").then(function(result){
+	if (result !== null){
+	  var data = TelemetryDataBuilder(ctx.request.data, "dposition");
+	  if (data === null){
+	    ctx.error("Some or all positional deltas missing.");
 	    next();
-	  });
+	  } else {
+	    // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
+	    result.position.x += data.dposition.x;
+	    result.position.y += data.dposition.y;
+	    result.position.z += data.dposition.z;
+	    setTelemetry(ctx.id, result).then(function(){
+	      var resp = ctx.response;
+	      result.visitor_id = ctx.id;
+	      resp.type = "telemetry";
+	      resp.data = result;
+	      next();
+	    });
+	  }
+	} else {
+	  next(); // Nothing to do. Just finish.
 	}
       }).error(function(err){
 	log.error("[WORKER %d] %s", workerid, err);
@@ -193,21 +344,22 @@ module.exports = function(m, r, config){
     function(ctx, next){
       // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
       // head orientation.
-      var data = TelemetryDataBuilder(ctx.request.data, [
-	"rotation_x", "rotation_y", "rotation_z",
-	"facing_x", "facing_y", "facing_z"
-      ]);
-      setTelemetry(ctx.id, data).then(function(){
-	var resp = ctx.response;
-	resp.type = "telemetry";
-	data.visitor_id = ctx.id;
-	resp.data = data;
+      var data = TelemetryDataBuilder(ctx.request.data);
+      if (data !== null){
+	setTelemetry(ctx.id, data).then(function(){
+	  var resp = ctx.response;
+	  resp.type = "telemetry";
+	  data.visitor_id = ctx.id;
+	  resp.data = data;
+	  next();
+	}).error(function(err){
+	  log.error("[WORKER %d] %s", workerid, err);
+	  ctx.error("Server error has occured.");
+	  next();
+	});
+      } else {
 	next();
-      }).error(function(err){
-	log.error("[WORKER %d] %s", workerid, err);
-	ctx.error("Server error has occured.");
-	next();
-      });
+      }
     },
     function(ctx, err){
       if (ctx.errored === true){
@@ -244,15 +396,12 @@ module.exports = function(m, r, config){
     var EmitNewConnection = function(telemetry){
       // Store this new id into the visitor list.
       r.pub.sadd(r.Key("visitor_list"), id).then(function(){
-	telemetry.visitor_id = id;
 	// First, send the client their new telemetry...
 	m.sockets.send(id, {
 	  type: "telemetry",
 	  data: { // clients only utilize position... no need to send the rest.
 	    visitor_id: id,
-	    position_x: telemetry.position_x,
-	    position_y: telemetry.position_y,
-	    position_z: telemetry.position_z
+	    position: telemetry.position
 	  }
 	}, {genhmac:true});
 	
@@ -266,19 +415,23 @@ module.exports = function(m, r, config){
 	}, [id], true);
       });
     };
-    
-    getTelemetry(id, true).then(function(telemetry){ // Pass true to persist the data if it's set to expire.
-      if (telemetry === null){ // No preexisting telemetry...
-	telemetry = RandomSpawnPosition(); // Get random position...
-	log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
-	setTelemetry(id, telemetry).then(function(){ // Store position into telemetry store for id...
-	  log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
-	  EmitNewConnection(telemetry); // Send message that new visitor is here!
-	});
-      } else { // This id had existing telemetry. No need to restore it so...
-	EmitNewConnection(telemetry); // Send message that "new" visitor is here!
-      }
-    });
+
+    persistTelemetry(id) // Call to remove any expiration from clients telemetry. If none exist, no harm done.
+      .then(function(){
+	return getTelemetry(id); // Now get the telemetry!
+      })
+      .then(function(telemetry){
+	if (telemetry === null){ // No preexisting telemetry...
+	  telemetry = RandomSpawnPosition(); // Get random position...
+	  log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
+	  setTelemetry(id, telemetry).then(function(){ // Store position into telemetry store for id...
+	    log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
+	    EmitNewConnection(telemetry); // Send message that new visitor is here!
+	  });
+	} else { // This id had existing telemetry. No need to restore it so...
+	  EmitNewConnection(telemetry); // Send message that "new" visitor is here!
+	}
+      });
   });
 
 

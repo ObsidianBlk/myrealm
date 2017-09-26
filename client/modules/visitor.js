@@ -53,7 +53,6 @@ if (typeof(window.REALM) === 'undefined'){
   var ME = null;
 
   function AddNewVisitor(data){
-    var t = data.telemetry;
     var scene = SCENE();
 
     console.log("NEW VISITOR!");
@@ -67,7 +66,7 @@ if (typeof(window.REALM) === 'undefined'){
       scene.appendChild(el);
       
       el.setAttribute("visitor", "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id);
-      el.setAttribute("position", t.position_x + " " + t.position_y + " " + t.position_z);
+      el.setAttribute("position", data.position.x + " " + data.position.y + " " + data.position.z);
     }
   }
   
@@ -86,6 +85,7 @@ if (typeof(window.REALM) === 'undefined'){
   });
 
   REALM.Emitter.on("visitor_enter", function(data){
+    console.log(data);
     AddNewVisitor(data);
   });
 
@@ -156,25 +156,25 @@ if (typeof(window.REALM) === 'undefined'){
 	  var telemetry = {};
 	  var head = visitor.head;
 	  var body = visitor.body;
-	  if (typeof(t.position_x) === 'number' && typeof(t.position_y) === 'number' && typeof(t.position_z) === 'number'){
-	    telemetry.x = t.position_x;
-	    telemetry.y = t.position_y;
-	    telemetry.z = t.position_z;
-	    this.el.setAttribute("position", telemetry);
+	  if (t.hasOwnProperty("position") === true){
+	    /*telemetry.x = t.position.x;
+	    telemetry.y = t.position.y;
+	    telemetry.z = t.position.z;*/
+	    this.el.setAttribute("position", t.position);
 	  }
 
-	  if (typeof(t.rotation_x) === 'number' && typeof(t.rotation_y) === 'number' && typeof(t.rotation_z) === 'number'){
-	    telemetry.x = t.rotation_x;
+	  if (body !== null && t.hasOwnProperty("rotation") === true){
+	    /*telemetry.x = t.rotation_x;
 	    telemetry.y = t.rotation_y;
-	    telemetry.z = t.rotation_z;
-	    body.setAttribute("rotation", telemetry);
+	    telemetry.z = t.rotation_z;*/
+	    body.setAttribute("rotation", t.rotation);
 	  }
 
-	  if (head !== null && typeof(t.facing_x) === 'number' && typeof(t.facing_y) === 'number' && typeof(t.facing_z) === 'number'){
-	    telemetry.x = t.facing_x;
+	  if (head !== null && t.hasOwnProperty("facing") === true){
+	    /*telemetry.x = t.facing_x;
 	    telemetry.y = t.facing_y;
-	    telemetry.z = t.facing_z;
-	    head.setAttribute("rotation", telemetry);
+	    telemetry.z = t.facing_z;*/
+	    head.setAttribute("rotation", t.facing);
 	  }
 	}
       }).bind(this);
@@ -224,9 +224,9 @@ if (typeof(window.REALM) === 'undefined'){
 
     getTelemetryDelta:function(clean){
       var d = {
-	position_dx: this._telemetry.currpos.x - this._telemetry.lastpos.x,
-	position_dy: this._telemetry.currpos.y - this._telemetry.lastpos.y,
-	position_dz: this._telemetry.currpos.z - this._telemetry.lastpos.z
+	x: this._telemetry.currpos.x - this._telemetry.lastpos.x,
+	y: this._telemetry.currpos.y - this._telemetry.lastpos.y,
+	z: this._telemetry.currpos.z - this._telemetry.lastpos.z
       };
       if (clean === true){
 	this.cleanTelemetry();
@@ -281,7 +281,7 @@ if (typeof(window.REALM) === 'undefined'){
       this.__HANDLER_Telemetry = (function(t){
 	if (t.visitor_id === this.data.v_id){
 
-	  this.setTelemetry(t.position_x, t.position_y, t.position_z, true);
+	  this.setTelemetry(t.position.x, t.position.y, t.position.z, true);
 	  ignorePositionChange = true;
           var tel = this.getTelemetry();
           this._body.setAttribute("position", tel);
@@ -363,23 +363,19 @@ if (typeof(window.REALM) === 'undefined'){
 	this._timeDelta %= this.data.mindelta;
 	if (this.telemetryDirty() === true){
 	  var pdelta = this.getTelemetryDelta(true);
-	  REALM.Server.send("visitor_move", pdelta);
+	  REALM.Server.send("visitor_move", {"dposition":pdelta});
 	}
 	if (this.__RotDirty === true || this.__FacingDirty === true){
 	  var orientation = {};
 	  if (this.__RotDirty === true){
 	    var rot = this._body.getAttribute("rotation");
-	    orientation.rotation_x = rot.x;
-	    orientation.rotation_y = rot.y;
-	    orientation.rotation_z = rot.z;
+	    orientation.rotation = rot;
 	    this.__RotDirty = false;
 	  }
 
 	  if (this.__FacingDirty === true){
 	    var facing = this.el.getAttribute("rotation");
-	    orientation.facing_x = facing.x;
-	    orientation.facing_y = facing.y;
-	    orientation.facing_z = facing.z;
+	    orientation.facing = facing;
 	    this.__FacingDirty = false;
 	  }
 	  REALM.Server.send("visitor_orientation", orientation);
