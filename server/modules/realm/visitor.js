@@ -49,11 +49,24 @@ module.exports = function(m, r, config){
       }
     };
   }
+
+
+  function hasTelemetry(o){
+    return (typeof(o) === typeof({}) && o.hasOwnProperty("x") && o.hasOwnProperty("y") && o.hasOwnProperty("z"));
+  }
+
+  function cleanTelemetry(t){
+    return {
+      x: Number(t.x),
+      y: Number(t.y),
+      z: Number(t.z)
+    };
+  }
   
 
   function getTelemetry(id, telem_name){
+    telem_name = (typeof(telem_name) === 'string') ? telem_name : null;
     return new Promise(function(resolve, reject){
-      telem_name = (typeof(telem_name) === 'string') ? telem_name : null;
       var m = r.pub.multi();
       if (telem_name === null){
 	m.hgetall(r.Key(KEY_TPOSITION, id));
@@ -76,15 +89,14 @@ module.exports = function(m, r, config){
 	var otype = typeof({});
 	var telem = {};
 	if (telem_name === null){
-	  log.debug(res);
-	  if (res[0][0] !== null){
-	    telem.position = res[0][1];
+	  if (hasTelemetry(res[0][1]) === true){
+	    telem.position = cleanTelemetry(res[0][1]);
 	  }
-	  if (res[1][0] !== null){
-	    telem.facing = res[1][1];
+	  if (hasTelemetry(res[1][1]) === true){
+	    telem.facing = cleanTelemetry(res[1][1]);
 	  }
-	  if (res[2][0] !== null){
-	    telem.rotation = res[2][1];
+	  if (hasTelemetry(res[2][1]) === true){
+	    telem.rotation = cleanTelemetry(res[2][1]);
 	  }
 	  if (telem.hasOwnProperty("position") === false &&
 	      telem.hasOwnProperty("rotation") === false &&
@@ -92,8 +104,8 @@ module.exports = function(m, r, config){
 	    telem = null;
 	  }
 	} else {
-	  if (res[0][0] !== null){
-	    telem[telem_name] = res[0][1];
+	  if (hasTelemetry(res[0][1]) === true){
+	    telem[telem_name] = cleanTelemetry(res[0][1]);
 	  } else {
 	    telem = null;
 	  }
@@ -143,33 +155,28 @@ module.exports = function(m, r, config){
     return false;
   }
 
-  function TelemetryDataBuilder(data, prop){
-    prop = (typeof(prop) === "string") ? prop : null;
-    var o = {};
-    var Extract = function(p, _in, _out){
-      if (_in.hasOwnProperty(p) === true){
-	log.debug("Has Property!");
-	if (isOneOfType(_in[p].x, "number", "string") === true &&
-	    isOneOfType(_in[p].y, "number", "string") === true &&
-	    isOneOfType(_in[p].z, "number", "string") === true){
-	  log.debug("Has X,Y,Z");
-	  if (_out.hasOwnProperty(p) === false){
-	    _out[p] = {};
-	  }
-	  _out[p].x = Number(_in[p].x);
-	  _out[p].y = Number(_in[p].y);
-	  _out[p].z = Number(_in[p].z);
+  function ExtractTelemFromProp(p, _in, _out){
+    if (_in.hasOwnProperty(p) === true){
+      log.debug("ETFP - %o - HAS PROPERTY!", _in);
+      if (isOneOfType(_in[p].x, "number", "string") === true &&
+	  isOneOfType(_in[p].y, "number", "string") === true &&
+	  isOneOfType(_in[p].z, "number", "string") === true){
+        log.debug("ETFP - HAS XYZ!");
+	if (_out.hasOwnProperty(p) === false){
+	  _out[p] = {};
 	}
+	_out[p].x = Number(_in[p].x);
+	_out[p].y = Number(_in[p].y);
+	_out[p].z = Number(_in[p].z);
       }
-    };
-
-    if (prop === null){
-      Extract("position", data, o);
-      Extract("rotation", data, o);
-      Extract("facing", data, o);
-    } else {
-      Extract(prop, data, o);
     }
+  }
+
+  function TelemetryDataBuilder(data){
+    var o = {};
+    ExtractTelemFromProp("position", data, o);
+    ExtractTelemFromProp("rotation", data, o);
+    ExtractTelemFromProp("facing", data, o);
     return (o.hasOwnProperty("position") || o.hasOwnProperty("rotation") || o.hasOwnProperty("facing")) ? o : null;
   }
 
@@ -302,24 +309,33 @@ module.exports = function(m, r, config){
     function(ctx, next){
       getTelemetry(ctx.id, "position").then(function(result){
 	if (result !== null){
-	  var data = TelemetryDataBuilder(ctx.request.data, "dposition");
-	  if (data === null){
+          var data = {};
+          log.debug("%o | %o", result, ctx.request.data);
+	  ExtractTelemFromProp('dposition', ctx.request.data, data);
+          log.debug("TELEM: %o", data);
+	  if (data.hasOwnProperty('dposition') === false){
+            log.debug("PING BAD!!");
 	    ctx.error("Some or all positional deltas missing.");
 	    next();
 	  } else {
+            log.debug("PING GOOD!!!");
 	    // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
 	    result.position.x += data.dposition.x;
 	    result.position.y += data.dposition.y;
 	    result.position.z += data.dposition.z;
 	    setTelemetry(ctx.id, result).then(function(){
 	      var resp = ctx.response;
-	      result.visitor_id = ctx.id;
+	      //result.visitor_id = ctx.id;
 	      resp.type = "telemetry";
-	      resp.data = result;
+	      resp.data = {
+                visitor_id: ctx.id,
+                telemetry: result
+              };
 	      next();
 	    });
 	  }
 	} else {
+          log.debug("FAILED MOVE: %o", ctx.request);
 	  next(); // Nothing to do. Just finish.
 	}
       }).error(function(err){
@@ -331,6 +347,7 @@ module.exports = function(m, r, config){
       if (ctx.errored === true){
 	ctx.send();
       } else {
+        log.debug("BROADCASTING MOVE!");
 	ctx.broadcast();
 	// TODO: Filter "receivers" to only those in the same layers.
       }
@@ -349,8 +366,11 @@ module.exports = function(m, r, config){
 	setTelemetry(ctx.id, data).then(function(){
 	  var resp = ctx.response;
 	  resp.type = "telemetry";
-	  data.visitor_id = ctx.id;
-	  resp.data = data;
+	  //data.visitor_id = ctx.id;
+	  resp.data = {
+            visitor_id: ctx.id,
+            telemetry: data
+          };
 	  next();
 	}).error(function(err){
 	  log.error("[WORKER %d] %s", workerid, err);
@@ -401,7 +421,9 @@ module.exports = function(m, r, config){
 	  type: "telemetry",
 	  data: { // clients only utilize position... no need to send the rest.
 	    visitor_id: id,
-	    position: telemetry.position
+	    telemetry: {
+              position: telemetry.position
+            }
 	  }
 	}, {genhmac:true});
 	
@@ -425,7 +447,7 @@ module.exports = function(m, r, config){
 	  telemetry = RandomSpawnPosition(); // Get random position...
 	  log.debug("[WORKER %d] No telemetry for '%s'. Generated new telemetry.", workerid, id);
 	  setTelemetry(id, telemetry).then(function(){ // Store position into telemetry store for id...
-	    log.info("[WORKER %d] Connected visitor '%s' positioned at (%d, %d, %d)", workerid, id, telemetry.position_x, telemetry.position_y, telemetry.position_z);
+	    log.info("[WORKER %d] Connected visitor '%s' positioned at %o", workerid, id, telemetry);
 	    EmitNewConnection(telemetry); // Send message that new visitor is here!
 	  });
 	} else { // This id had existing telemetry. No need to restore it so...
