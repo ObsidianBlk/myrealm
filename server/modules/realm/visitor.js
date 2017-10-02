@@ -269,7 +269,14 @@ module.exports = function(m, r, config){
 	    ctx.error("Some or all positional deltas missing.");
 	    next();
 	  } else {
-	    // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
+	    // TODO: Test dposition vector to see if it's valid. If it is only send updated telemetry to clients other than originating (default).
+	    // Otherwise, correct position and send new telemetry to ALL clients!
+	    /*
+	    if (invalid){
+	      // correct dposition
+	      ctx.data.visitor_send_all = true; // This will determine if the originating client is given new telemetry.
+	    }
+	    */
 	    result.position.x += data.dposition.x;
 	    result.position.y += data.dposition.y;
 	    result.position.z += data.dposition.z;
@@ -296,8 +303,11 @@ module.exports = function(m, r, config){
       if (ctx.errored === true){
 	ctx.send();
       } else {
-        log.debug("BROADCASTING MOVE!");
-	ctx.broadcast();
+	if (ctx.data.visitor_send_all === true){
+	  ctx.broadcast();
+	} else {
+	  ctx.broadcast([ctx.id], true);
+	}
 	// TODO: Filter "receivers" to only those in the same layers.
       }
     }
