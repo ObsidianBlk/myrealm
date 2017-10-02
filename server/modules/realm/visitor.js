@@ -26,6 +26,7 @@ module.exports = function(m, r, config){
   // ----------------------------------------------------------------------
   //var fUpdatePosition = m.requester.requestFunc("world.updatePosition");
 
+  /*
   function HMGetResultTransformer(result){
     if (Array.isArray(result) === true){
       var o = {};
@@ -35,6 +36,7 @@ module.exports = function(m, r, config){
     }
     return result;
   }
+  */
 
 
   function RandomSpawnPosition(){
@@ -113,37 +115,7 @@ module.exports = function(m, r, config){
 	resolve(telem);
       });
     });
-    /*return new Promise(function(resolve, reject){
-      var kTelemetry = r.Key(NS_TELEMETRY, id);
-      r.pub.ttl(kTelemetry).then(function(res){
-	if (res === -1 || (res > 0 && persist === false)){ // No Expiration or, get the data while we can.
-	  r.pub.hgetall(kTelemetry).then(function(result){
-	    resolve(result);
-	  }).error(function(err){reject(err);});
-	} else if (res >= 0){ // There is an upcoming expiration
-	  r.pub.persist(kTelemetry).then(function(){ // Clear expiration
-	    r.pub.hgetall(kTelemetry).then(function(result){ // Get and return telemetry data.
-	      resolve(result);
-	    }).error(function(err){reject(err);});
-	  });
-	} else { // No key... return null.
-	  resolve(null);
-	}
-      });
-    });*/
   }
-
-  /*
-  function TelemetryDataBuilder(data, propList){
-    var o = {};
-    propList.forEach(function(prop){
-      if (data.hasOwnProperty(prop) === true && (typeof(data[prop]) === 'number' || typeof(data[prop]) === 'string')){
-	o[prop] = Number(data[prop]);
-      }
-    });
-    return o;
-  }
-  */
 
   function isOneOfType(){
     if (arguments.length > 0){
@@ -157,17 +129,21 @@ module.exports = function(m, r, config){
 
   function ExtractTelemFromProp(p, _in, _out){
     if (_in.hasOwnProperty(p) === true){
-      log.debug("ETFP - %o - HAS PROPERTY!", _in);
       if (isOneOfType(_in[p].x, "number", "string") === true &&
 	  isOneOfType(_in[p].y, "number", "string") === true &&
 	  isOneOfType(_in[p].z, "number", "string") === true){
-        log.debug("ETFP - HAS XYZ!");
+	var x = Number(_in[p].x);
+	var y = Number(_in[p].y);
+	var z = Number(_in[p].z);
+	if (x === Number.NaN || y === Number.NaN || z === Number.NaN){
+	  throw new Error("Property '" + p + "' contains invalid value.");
+	}
 	if (_out.hasOwnProperty(p) === false){
 	  _out[p] = {};
 	}
-	_out[p].x = Number(_in[p].x);
-	_out[p].y = Number(_in[p].y);
-	_out[p].z = Number(_in[p].z);
+	_out[p].x = x;
+	_out[p].y = y;
+	_out[p].z = z;
       }
     }
   }
@@ -221,28 +197,6 @@ module.exports = function(m, r, config){
 	reject(new Error("No telemetry data."));
       }
     });
-    /*return new Promise(function(resolve, reject){
-      var tdat = TelemetryDataBuilder(data, [
-	"position_x", "position_y", "position_z",
-	"rotation_x", "rotation_y", "rotation_z",
-	"facing_x", "facing_y", "facing_z"
-      ]);
-      if (tdat !== null){
-	var kTelemetry = r.Key(NS_TELEMETRY, id);
-	// Check if the telemetry for the given id is set to expire.
-	r.pub.ttl(kTelemetry).then(function(ret){
-	  if (ret === -1 || (ret >= 0 && persist === false)){ // It's not set to expire, or we don't want to stop expiration, so just set the key.
-	    resolve(r.pub.hmset(kTelemetry, tdat));
-	  } else { // It's going to expire, remove the expiration, then set the key...
-	    r.pub.persist(kTelemetry).then(function(){
-	      resolve(r.pub.hmset(kTelemetry, tdat));
-	    });
-	  }
-	});
-      } else {
-	reject(new Error("No telemetry data."));
-      }
-    });*/
   }
 
   function persistTelemetry(id){
@@ -310,15 +264,11 @@ module.exports = function(m, r, config){
       getTelemetry(ctx.id, "position").then(function(result){
 	if (result !== null){
           var data = {};
-          log.debug("%o | %o", result, ctx.request.data);
 	  ExtractTelemFromProp('dposition', ctx.request.data, data);
-          log.debug("TELEM: %o", data);
 	  if (data.hasOwnProperty('dposition') === false){
-            log.debug("PING BAD!!");
 	    ctx.error("Some or all positional deltas missing.");
 	    next();
 	  } else {
-            log.debug("PING GOOD!!!");
 	    // TODO: Need to validate telemetry against a world tester... or, at least, make an attempt to?
 	    result.position.x += data.dposition.x;
 	    result.position.y += data.dposition.y;
@@ -335,10 +285,9 @@ module.exports = function(m, r, config){
 	    });
 	  }
 	} else {
-          log.debug("FAILED MOVE: %o", ctx.request);
 	  next(); // Nothing to do. Just finish.
 	}
-      }).error(function(err){
+      }).catch(function(err){
 	log.error("[WORKER %d] %s", workerid, err);
 	ctx.error("Unknown server error occured.");
       });
@@ -372,7 +321,7 @@ module.exports = function(m, r, config){
             telemetry: data
           };
 	  next();
-	}).error(function(err){
+	}).catch(function(err){
 	  log.error("[WORKER %d] %s", workerid, err);
 	  ctx.error("Server error has occured.");
 	  next();
@@ -449,6 +398,8 @@ module.exports = function(m, r, config){
 	  setTelemetry(id, telemetry).then(function(){ // Store position into telemetry store for id...
 	    log.info("[WORKER %d] Connected visitor '%s' positioned at %o", workerid, id, telemetry);
 	    EmitNewConnection(telemetry); // Send message that new visitor is here!
+	  }).catch(function(err){
+	    log.debug("[WORKER %d] Telemetry invalid, \"%s\".", err.message);
 	  });
 	} else { // This id had existing telemetry. No need to restore it so...
 	  EmitNewConnection(telemetry); // Send message that "new" visitor is here!
