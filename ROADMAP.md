@@ -12,7 +12,7 @@ Different items on the roadmap may have different symbols. Here's the key for yo
 ## 0.0.9 - Nano Stumbling Indri
 1. **[`*`]** Start naming versions. One word for each number of the format `<Adjective> <Verb> <Animal>` and the word only changes when the letter does.
 * _That was easy!_
-2. **[ ]** Reactor Realm/visitor system for cleaner communications.
+2. **[`!`]** Reactor Realm/visitor system for cleaner communications.
 3. **[ ]** Basic client visitor interface (UI) for Desktop and non-VR mobile.
 4. **[ ]** Allow visitor to change their visible name.
 5. **[ ]** Design a better visitor avatar.
