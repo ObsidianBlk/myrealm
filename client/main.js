@@ -80,6 +80,4 @@ window.REALM = (function(){
   return obj;
 })();
 
-require('./modules/look-controls-alt');
-require('./modules/touch-move-controls');
-require('./modules/visitor');
+require("./modules");
