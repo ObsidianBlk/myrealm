@@ -27,7 +27,7 @@ module.exports = (function(){
     };
 
     this.once = function(name, fn, owner){
-      this.listen(name, fn, owner, true);
+      this.on(name, fn, owner, true);
     };
 
     this.unlisten = function(name, fn, owner){

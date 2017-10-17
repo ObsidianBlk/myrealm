@@ -100,7 +100,7 @@ if (typeof(window.REALM) === 'undefined'){
   })();
 
   vu.getHeadTemplate = function(name){
-    if (headTemplates !== null){
+    if (vu.headTemplates.length > 0){
       for (var i=0; i < headTemplates.length; i++){
 	if (headTemplates[i].name === name){
 	  return headTemplates[i].html;
@@ -111,7 +111,7 @@ if (typeof(window.REALM) === 'undefined'){
   };
 
   vu.getBodyTemplate = function(name){
-    if (bodyTemplates !== null){
+    if (vu.bodyTemplates.length > 0){
       for (var i=0; i < bodyTemplates.length; i++){
 	if (bodyTemplates[i].name === name){
 	  return bodyTemplates[i].html;
@@ -123,6 +123,8 @@ if (typeof(window.REALM) === 'undefined'){
 
 
   // Now we bring in the Visitor components. YAY!
-  require("./visitor_body")(vu);
+  require("./visitor_body")(REALM, vu);
+  require("./visitor_other")(REALM, vu);
+  require("./visitor_self")(REALM, vu);
 
 })(window.REALM);

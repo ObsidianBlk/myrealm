@@ -1,6 +1,7 @@
 
 module.exports = function(REALM, vu){
 
+  // This function creates a very crude "head", in case no template was given.
   function CreateBasicHead(el){
     var head = document.createElement("a-entity");
     head.setAttribute("class", "visitor_head");
@@ -20,6 +21,7 @@ module.exports = function(REALM, vu){
     return head;
   }
 
+  // This function creates a very crude "body", in case no template was given.
   function CreateBasicBody(el){
     var body = document.createElement("a-entity");
     body.setAttribute("class", "visitor_body");
@@ -30,7 +32,6 @@ module.exports = function(REALM, vu){
     e.setAttribute("position", "0 0.55 0");
     body.appendChild(e);
 
-    //<a-entity geometry="primitive: box; width: 0.5; height: 0.1; depth: 0.1" material="color:#999900" position="0 0.05 -0.3"></a-entity>
     e = document.createElement("a-entity");
     e.setAttribute("geometry", "primitive: box; width: 0.5; height: 0.1; depth: 0.1");
     e.setAttribute("material", "color:#999900");
@@ -40,18 +41,158 @@ module.exports = function(REALM, vu){
     el.appendChild(body);
     return body;
   }
+
+  function CreateHead(el, template_name){
+    if (template_name !== ""){
+      var template = vu.getHeadTemplate(template_name);
+      if (template !== ""){
+	var head = document.createElement("a-entity");
+	head.setAttribute("class", "visitor_head");
+	head.innerHTML = template;
+	return head;
+      }
+    }
+    return CreateBasicHead(el);
+  }
+
+  function CreateBody(el, template_name){
+    if (template_name !== ""){
+      var template = vu.getBodyTemplate(template_name);
+      if (template !== ""){
+	var body = document.createElement("a-entity");
+	body.setAttribute("class", "visitor_body");
+	body.innerHTML = template;
+	return body;
+      }
+    }
+    return CreateBasicBody(el);
+  }
   
   REALM.AFRAME.registerComponent("visitor_body", {
     schema:{
-      head_template: {default:""},
-      body_template: {default:""}
+      head_template: {default: ""},
+      head_visible: {default: true},
+      head_height: {default: 1.6},
+      body_template: {default: ""},
+      body_visible: {default: true},
+      body_detached: {default: false}
+    },
+
+    _RemoveBody:function(){
+      if (this.bodyEl !== null){
+	var parent = this.bodyEl.parent;
+	if (typeof(parent) !== 'undefined' && parent !== null){
+	  parent.removeChild(this.bodyEl);
+	}
+	this.bodyEl = null;
+      }
+    },
+
+    _CreateBody:function(){
+      this._RemoveBody();
+      if (this.data.body_visible === true){
+	this.bodyEl = CreateBody(
+	  (this.data.body_detached === true) ? this.el.sceneEl : this.el,
+	  this.data.body_template
+	);
+	if (this.data.body_detached === true && this.bodyEl !== null){
+	  this.bodyEl.setAttribute("position", this.el.getAttribute("position"));
+	}
+      }
     },
 
     init: function(){
       this.bodyEl = null;
       this.headEl = null;
+    },
 
-      // TODO: Well... actually name this do something would be a start, I suppose.
+    update: function(oldData){
+      var bodyRot = (this.bodyEl !== null) ? this.bodyEl.getAttribute("rotation") : {x:0, y:0, z:0};
+      var bodyPos = (this.bodyEl !== null) ? this.bodyEl.getAttribute("position") : {x:0, y:0, z:0};
+      var headRot = (this.headEl !== null) ? this.headEl.getAttribute("rotation") : {x:0, y:0, z:0};
+      
+      // ------
+      // --- Check on the body first!
+      if (this.data.body_visible !== oldData.body_visible || this.data.body_detached !== oldData.body_detached){
+	// If visibility is false, this simply clears the body element.
+	this._CreateBody();
+      } else if (this.data.body_visible === true){
+	// Now check template change, but only if the visible state is true
+	if (this.data.body_template !== oldData.body_template){
+	  this._CreateBody();
+	  this.setBodyRotation(bodyRot);
+	}
+      }
+      this.setBodyPosition(bodyPos);
+
+      // ------
+      // --- Check on the head next!
+      if (this.data.head_visible !== oldData.head_visible){
+	// Visibility has changed. Even without knowing what the new state explicitly is, first remove (if it exists) the current head element.
+	if (this.headEl !== null){
+	  this.el.removeChild(this.headEl);
+	  this.headEl = null;
+	}
+
+	// Now, if going visible, attempt to create a new head element.
+	if (this.data.head_visible === true){
+	  this.headEl = CreateHead(this.el, this.data.head_template);
+	  this.setHeadRotation(headRot);
+	}
+      } else if (this.data.head_visible === true){
+	// Now check template change, but only if the visible state is true
+	if (this.data.head_template !== oldData.head_template){
+	  if (this.headEl !== null){ // Remove old head
+	    this.el.removeChild(this.headEl);
+	    this.headEl = null;
+	  }
+	  // Add the new head
+	  this.headEl = CreateHead(this.el, this.data.head_template);
+	  this.setHeadRotation(headRot);
+	}
+      }
+
+      this.updateHeadHeight();
+    },
+
+    updateHeadHeight: function(){
+      if (this.headEl !== null){
+	this.headEl.setAttribute("position", "y", this.data.head_height);
+      }
+    },
+
+    // r is expected to be of the form {x:<number>, y:<number>, z:<number>}
+    setBodyRotation: function(r){
+      if (this.bodyEl !== null){
+	this.bodyEl.setAttribute("rotation", r);
+      }
+    },
+
+    getBodyRotation: function(){
+      return (this.bodyEl !== null) ? this.bodyEl.getAttribute("rotation") : {x:0, y:0, z:0};
+    },
+
+    setBodyPosition: function(p){
+      if (this.bodyEl !== null){
+	this.bodyEl.setAttribute("position", p);
+      }
+    },
+
+    getBodyPosition: function(){
+      return (this.bodyEl !== null) ? this.bodyEl.getAttribute("position") : {x:0, y:0, z:0};
+    },
+
+    // r is expected to be of the form {x:<number>, y:<number>, z:<number>}
+    setHeadRotation: function(r){
+      if (this.headEl !== null){
+	this.headEl.setAttribute("rotation", r);
+      }
+    },
+
+    getHeadRotation: function(){
+      return (this.headEl !== null) ? this.headEl.getAttribute("rotation") : {x:0, y:0, z:0};
     }
   });
 };
+
+
