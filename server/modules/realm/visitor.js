@@ -9,7 +9,8 @@ module.exports = function(m, r, config){
   //var mwValidation = require('../middleware/validation')(config, r);
   var mwTokenize = require('../../middleware/tokenize')(config, r);
   var mwHMAC = require('../../middleware/hmac')(config, r);
-  
+
+  var KEY_TVELOCITY = "visitor:tvelocity";
   var KEY_TPOSITION = "visitor:tposition";
   var KEY_TROTATION = "visitor:trotation";
   var KEY_TFACING = "visitor:tfacing";
@@ -25,18 +26,6 @@ module.exports = function(m, r, config){
   // Work Functions
   // ----------------------------------------------------------------------
   //var fUpdatePosition = m.requester.requestFunc("world.updatePosition");
-
-  /*
-  function HMGetResultTransformer(result){
-    if (Array.isArray(result) === true){
-      var o = {};
-      for (var i=0; i < result.length; i+=2){
-	o[result[i]] = result[i+1];
-      }
-    }
-    return result;
-  }
-  */
 
 
   function RandomSpawnPosition(){
@@ -72,12 +61,16 @@ module.exports = function(m, r, config){
       var m = r.pub.multi();
       if (telem_name === null){
 	m.hgetall(r.Key(KEY_TPOSITION, id));
+	m.hgetall(r.Key(KEY_TVELOCITY, id));
 	m.hgetall(r.Key(KEY_TFACING, id));
 	m.hgetall(r.Key(KEY_TROTATION, id));
       } else {
 	switch (telem_name){
 	case "position":
 	  m.hgetall(r.Key(KEY_TPOSITION, id));
+	  break;
+	case "velocity":
+	  m.hgetall(r.Key(KEY_TVELOCITY, id));
 	  break;
 	case "rotation":
 	  m.hgetall(r.Key(KEY_TROTATION, id));
@@ -95,12 +88,16 @@ module.exports = function(m, r, config){
 	    telem.position = cleanTelemetry(res[0][1]);
 	  }
 	  if (hasTelemetry(res[1][1]) === true){
-	    telem.facing = cleanTelemetry(res[1][1]);
+	    telem.velocity = cleanTelemetry(res[1][1]);
 	  }
 	  if (hasTelemetry(res[2][1]) === true){
-	    telem.rotation = cleanTelemetry(res[2][1]);
+	    telem.facing = cleanTelemetry(res[2][1]);
+	  }
+	  if (hasTelemetry(res[3][1]) === true){
+	    telem.rotation = cleanTelemetry(res[3][1]);
 	  }
 	  if (telem.hasOwnProperty("position") === false &&
+	      telem.hasOwnProperty("velocity") === false &&
 	      telem.hasOwnProperty("rotation") === false &&
 	      telem.hasOwnProperty("facing") === false){
 	    telem = null;
@@ -151,9 +148,10 @@ module.exports = function(m, r, config){
   function TelemetryDataBuilder(data){
     var o = {};
     ExtractTelemFromProp("position", data, o);
+    ExtractTelemFromProp("velocity", data, o);
     ExtractTelemFromProp("rotation", data, o);
     ExtractTelemFromProp("facing", data, o);
-    return (o.hasOwnProperty("position") || o.hasOwnProperty("rotation") || o.hasOwnProperty("facing")) ? o : null;
+    return (o.hasOwnProperty("position") || o.hasOwnProperty("velocity") || o.hasOwnProperty("rotation") || o.hasOwnProperty("facing")) ? o : null;
   }
 
   function setSubTelemetry(id, telem_name, data){
@@ -163,6 +161,10 @@ module.exports = function(m, r, config){
 	switch(telem_name){
 	case "position":
 	  return r.pub.hmset(r.Key(KEY_TPOSITION, id), tdat.position);
+	  break;
+
+	case "velocity":
+	  return r.pub.hmset(r.Key(KEY_TVELOCITY, id), tdat.velocity);
 	  break;
 
 	case "rotation":
@@ -186,6 +188,9 @@ module.exports = function(m, r, config){
 	if (tdat.hasOwnProperty("position") === true){
 	  m.hmset(r.Key(KEY_TPOSITION, id), tdat.position);
 	}
+	if (tdat.hasOwnProperty("velocity") === true){
+	  m.hmset(r.Key(KEY_TVELOCITY, id), tdat.velocity);
+	}
 	if (tdat.hasOwnProperty("rotation") === true){
 	  m.hmset(r.Key(KEY_TROTATION, id), tdat.rotation);
 	}
@@ -202,6 +207,7 @@ module.exports = function(m, r, config){
   function persistTelemetry(id){
     return r.pub.multi()
       .persist(r.Key(KEY_TPOSITION, id))
+      .persist(r.Key(KEY_TVELOCITY, id))
       .persist(r.Key(KEY_TROTATION, id))
       .persist(r.Key(KEY_TFACING, id))
       .exec();
@@ -211,12 +217,14 @@ module.exports = function(m, r, config){
     if (typeof(timeout) === 'number' && timeout > 0){
       r.pub.multi()
 	.expire(r.Key(KEY_TPOSITION, id), timeout)
+	.expire(r.Key(KEY_TVELOCITY, id), timeout)
 	.expire(r.Key(KEY_TROTATION, id), timeout)
 	.expire(r.Key(KEY_TFACING, id), timeout)
 	.exec();
     } else {
       r.pub.multi()
 	.del(r.Key(KEY_TPOSITION, id))
+	.del(r.Key(KEY_TVELOCITY, id))
 	.del(r.Key(KEY_TROTATION, id))
 	.del(r.Key(KEY_TFACING, id))
 	.exec();
