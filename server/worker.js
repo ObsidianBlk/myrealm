@@ -57,8 +57,6 @@ module.exports = function(cluster, config){
       }
     });
   }
-  //require('./realm/ether')(mediator, r, config);
-  //require('./realm/visitor')(mediator, r, config);
 
 
   // Configure the View Engine to use handlebar templates.
@@ -149,7 +147,12 @@ module.exports = function(cluster, config){
       var resourcePath = path.resolve(path.join(www_path, req.params[0]));
       fs.exists(resourcePath, function(exists){
 	if (exists){
-	  res.sendFile(resourcePath);
+	  logHTTP.debug("[WORKER %d] Sending requested file, '%s'", cluster.worker.id, resourcePath);
+	  res.sendFile(resourcePath, {}, function(err){
+	    if (err){
+	      logHTTP.debug("[WORKER %d] Failed to send file, \"%s\".", cluster.worker.id, err);
+	    }
+	  });
 	} else {
 	  logHTTP.debug("[WORKER %d] Requested file does not exist, '%s'", cluster.worker.id, resourcePath);
 	  res.status(404).send("Resource '" + req.params[0] + "' Not found.");
