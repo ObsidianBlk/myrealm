@@ -12,17 +12,6 @@ module.exports = function(REALM, vu){
     var el = document.querySelector("#" + data.visitor_id);
     if (el === null){ // Don't re-add a visitor already being tracked.
       el = document.createElement("a-visitor-other");
-      /*var visdef = "v_id:" + data.visitor_id + ";username:Visitor_" + data.visitor_id;
-      var visbodydef = "";
-      if (typeof(data.body_template) === 'string'){
-	visbodydef += "body_template=" + data.body_template;
-      }
-      if (typeof(data.head_template) === 'string'){
-	if (visbodydef !== ""){
-	  visbodydef += ";";
-	}
-	visbodydef += "head_template=" + data.head_template;
-      }*/
       
       el.setAttribute("id", data.visitor_id);
       el.setAttribute("v-id", data.visitor_id);
@@ -33,8 +22,6 @@ module.exports = function(REALM, vu){
       if (typeof(data.head_template) === 'string'){
 	el.setAttribute("head-template", data.head_template);
       }
-      //el.setAttribute("visitor_body", visbodydef);
-      //el.setAttribute("visitor_other", visdef);
       el.setAttribute("position", t.position.x + " " + t.position.y + " " + t.position.z);
       scene.appendChild(el);
     }
@@ -77,10 +64,13 @@ module.exports = function(REALM, vu){
 
     init: function(){
       var vbc = this.el.components.visitor_body;
+      var selfAnimEl = document.createElement("a-animation");
+      
       this.__HANDLER_Telemetry = (function(t){
 	if (t.visitor_id === this.data.v_id){
 	  var telemetry = t.telemetry;
 	  if (telemetry.hasOwnProperty("position") === true){
+	    var p = telemetry.position;
 	    this.el.setAttribute("position", telemetry.position);
 	  }
 

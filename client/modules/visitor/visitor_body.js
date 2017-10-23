@@ -95,7 +95,7 @@ module.exports = function(REALM, vu){
 	  (this.data.body_detached === true) ? this.el.sceneEl : this.el,
 	  this.data.body_template
 	);
-	if (this.data.body_detached === true && this.bodyEl !== null){
+	if (this.bodyEl !== null && this.data.body_detached === true){
 	  this.bodyEl.setAttribute("position", this.el.getAttribute("position"));
 	}
       }
@@ -104,6 +104,10 @@ module.exports = function(REALM, vu){
     init: function(){
       this.bodyEl = null;
       this.headEl = null;
+
+      this.bodyTargPos = null;
+      this.bodyTargRot = null;
+      this.headTargRot = null;
     },
 
     update: function(oldData){
@@ -120,10 +124,10 @@ module.exports = function(REALM, vu){
 	// Now check template change, but only if the visible state is true
 	if (this.data.body_template !== oldData.body_template){
 	  this._CreateBody();
-	  this.setBodyRotation(bodyRot);
+	  this.setBodyRotation(bodyRot, true);
 	}
       }
-      this.setBodyPosition(bodyPos);
+      this.setBodyPosition(bodyPos, true);
 
       // ------
       // --- Check on the head next!
@@ -137,7 +141,7 @@ module.exports = function(REALM, vu){
 	// Now, if going visible, attempt to create a new head element.
 	if (this.data.head_visible === true){
 	  this.headEl = CreateHead(this.el, this.data.head_template);
-	  this.setHeadRotation(headRot);
+	  this.setHeadRotation(headRot, true);
 	}
       } else if (this.data.head_visible === true){
 	// Now check template change, but only if the visible state is true
@@ -148,7 +152,7 @@ module.exports = function(REALM, vu){
 	  }
 	  // Add the new head
 	  this.headEl = CreateHead(this.el, this.data.head_template);
-	  this.setHeadRotation(headRot);
+	  this.setHeadRotation(headRot, true);
 	}
       }
 
@@ -169,7 +173,12 @@ module.exports = function(REALM, vu){
     },
 
     getBodyRotation: function(){
-      return (this.bodyEl !== null) ? this.bodyEl.getAttribute("rotation") : {x:0, y:0, z:0};
+      var r = {x:0, y:0, z:0};
+      if (this.bodyEl !== null){
+	// This returns a freaking reference! WHY! This is confusing as SIN!
+	r = this.bodyEl.getAttribute("rotation");
+      }
+      return {x:r.x, y:r.y, z:r.z};
     },
 
     setBodyPosition: function(p){
@@ -179,7 +188,11 @@ module.exports = function(REALM, vu){
     },
 
     getBodyPosition: function(){
-      return (this.bodyEl !== null) ? this.bodyEl.getAttribute("position") : {x:0, y:0, z:0};
+      var p = {x:0, y:0, z:0};
+      if (this.bodyEl !== null){
+	p = this.bodyEl.getAttribute("position");
+      }
+      return {x:p.x, y:p.y, z:p.z};
     },
 
     // r is expected to be of the form {x:<number>, y:<number>, z:<number>}
@@ -190,7 +203,11 @@ module.exports = function(REALM, vu){
     },
 
     getHeadRotation: function(){
-      return (this.headEl !== null) ? this.headEl.getAttribute("rotation") : {x:0, y:0, z:0};
+      var r = {x:0, y:0, z:0};
+      if (this.headEl !== null){
+	r = this.headEl.getAttribute("rotation");
+      }
+      return {x:r.x, y:r.y, z:r.z};
     }
   });
 };
