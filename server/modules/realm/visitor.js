@@ -265,69 +265,10 @@ module.exports = function(m, r, config){
   // Direct Socket Client Request!
   // ----------------------------------------------------------------------
   m.sockets.handler(
-    "visitor_move",
+    "telemetry",
     mwTokenize.getToken,
     mwHMAC.verifyHMAC,
     function(ctx, next){
-      getTelemetry(ctx.id, "position").then(function(result){
-	if (result !== null){
-          var data = {};
-	  ExtractTelemFromProp('dposition', ctx.request.data, data);
-	  if (data.hasOwnProperty('dposition') === false){
-	    ctx.error("Some or all positional deltas missing.");
-	    next();
-	  } else {
-	    // TODO: Test dposition vector to see if it's valid. If it is only send updated telemetry to clients other than originating (default).
-	    // Otherwise, correct position and send new telemetry to ALL clients!
-	    /*
-	    if (invalid){
-	      // correct dposition
-	      ctx.data.visitor_send_all = true; // This will determine if the originating client is given new telemetry.
-	    }
-	    */
-	    result.position.x += data.dposition.x;
-	    result.position.y += data.dposition.y;
-	    result.position.z += data.dposition.z;
-	    setTelemetry(ctx.id, result).then(function(){
-	      var resp = ctx.response;
-	      //result.visitor_id = ctx.id;
-	      resp.type = "telemetry";
-	      resp.data = {
-                visitor_id: ctx.id,
-                telemetry: result
-              };
-	      next();
-	    });
-	  }
-	} else {
-	  next(); // Nothing to do. Just finish.
-	}
-      }).catch(function(err){
-	log.error("[WORKER %d] %s", workerid, err);
-	ctx.error("Unknown server error occured.");
-      });
-    },
-    function(ctx, err){
-      if (ctx.errored === true){
-	ctx.send();
-      } else {
-	if (ctx.data.visitor_send_all === true){
-	  ctx.broadcast();
-	} else {
-	  ctx.broadcast([ctx.id], true);
-	}
-	// TODO: Filter "receivers" to only those in the same layers.
-      }
-    }
-  );
-
-  m.sockets.handler(
-    "visitor_orientation",
-    mwTokenize.getToken,
-    mwHMAC.verifyHMAC,
-    function(ctx, next){
-      // NOTE: This handler will take the orientation data at face value. The reason is we don't want the server to control
-      // head orientation.
       var data = TelemetryDataBuilder(ctx.request.data);
       if (data !== null){
 	setTelemetry(ctx.id, data).then(function(){
@@ -354,8 +295,7 @@ module.exports = function(m, r, config){
       } else {
 	ctx.broadcast([ctx.id], true); // Send to everyone EXCEPT the caller!
       }
-    }
-  );
+    });
 
   // List and Telemetry of existing visitors!
   m.sockets.handler(

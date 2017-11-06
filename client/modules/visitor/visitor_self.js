@@ -271,25 +271,23 @@ module.exports = function(REALM, vu){
       this._timeDelta += (delta/1000); // Storing delta in seconds.
       if (this._timeDelta >= this.data.mindelta){
 	this._timeDelta %= this.data.mindelta;
-	if (this._telemetry.dirty === true){
-	  var pdelta = this._telemetry.delta(true);
-          //console.log("Moving");
-	  REALM.Server.send("visitor_move", {"dposition":pdelta});
-	}
-	if (this.__RotDirty === true || this.__FacingDirty === true){
-	  var orientation = {};
+	if (this._telemetry.dirty === true || this.__RotDirty === true || this.__FacingDirty === true){
+	  var telemetry = {};
+	  if (this._telemetry.dirty === true){
+	    telemetry.position = this._telemetry.get();
+	    this._telemetry.clean();
+	  }
+	  
 	  if (this.__RotDirty === true){
-	    var rot = this._vbc.getBodyRotation();
-	    orientation.rotation = rot;
+	    telemetry.rotation = this._vbc.getBodyRotation();
 	    this.__RotDirty = false;
 	  }
 
 	  if (this.__FacingDirty === true){
-	    var facing = this.el.getAttribute("rotation");
-	    orientation.facing = facing;
+	    telemetry.facing = this.el.getAttribute("rotation");
 	    this.__FacingDirty = false;
 	  }
-	  REALM.Server.send("visitor_orientation", orientation);
+	  REALM.Server.send("telemetry", telemetry);
 	}
       }
     },
